@@ -4,6 +4,12 @@
   <img src="src/Umbraco.Community.Cloud.HealthChecks/cloud-healthchecks.png" alt="Cloud Health Checks" width="128" height="128">
 </p>
 
+<p align="center">
+  <a href="https://www.nuget.org/packages/Umbraco.Community.Cloud.HealthChecks">
+    <img src="https://img.shields.io/nuget/v/Umbraco.Community.Cloud.HealthChecks.svg" alt="NuGet Version">
+  </a>
+</p>
+
 A package that provides health checks for Umbraco Cloud environments, helping you monitor critical system resources and storage usage.
 
 > For full package documentation including features, installation, usage, and configuration, see the [Package README](src/Umbraco.Community.Cloud.HealthChecks/README.md).
