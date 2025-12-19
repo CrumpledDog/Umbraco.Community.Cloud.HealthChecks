@@ -122,5 +122,5 @@ jobs:
 
     - name: Push NuGet Package
       if: ${{ needs.setup.outputs.new_release_published == 'true' }}
-      run: dotnet nuget push "${{ env.PATH_TO_EXTENSION }}/bin/Release/Umbraco.Community.Forms.OnTheTurn.*.nupkg"  --api-key ${{ secrets.GITHUB_TOKEN }} --source "github" --skip-duplicate
+      run: dotnet nuget push "${{ env.PATH_TO_EXTENSION }}/bin/Release/Umbraco.Community.Cloud.HealthChecks.*.nupkg"  --api-key ${{ secrets.GITHUB_TOKEN }} --source "github" --skip-duplicate
       
