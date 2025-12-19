@@ -1,0 +1,14 @@
+{
+  "id": "Umbraco.Community.Cloud.HealthChecks",
+  "name": "Umbraco.Community.Cloud.HealthChecks",
+  "version": "0.0.0",
+  "allowTelemetry": true,
+  "extensions": [
+    {
+      "name": "Umbraco Community Cloud Health Checks Bundle",
+      "alias": "Umbraco.Community.Cloud.HealthChecks.Bundle",
+      "type": "bundle",
+      "js": "/App_Plugins/UmbracoCommunityCloudHealthChecks/umbraco-community-cloud-health-checks.js"
+    }
+  ]
+}
