@@ -1,0 +1,15 @@
+{
+  "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
+  "Title":  "Umbraco.Community.Cloud.HealthChecks" ,
+  "AuthorDetails": {
+    "Name": "Jeavon Leopold",
+    "Description": "Umbraco MVP, CMS and documentation contributor",
+    "Url": "https://github.com/Jeavon",
+    "ImageUrl": "https://github.com/jeavon.png"
+  },
+  "Category": "Developer Tools",
+  "IssueTrackerUrl": "https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/issues",
+  "LicenseTypes": [ "Free" ],
+  "PackageType": "Package",
+  "Tags": [ "Umbraco Cloud", "Health Checks", "Monitoring" ]
+}
