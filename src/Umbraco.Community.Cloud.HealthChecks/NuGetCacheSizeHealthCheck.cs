@@ -18,18 +18,22 @@ namespace Umbraco.Community.Cloud.HealthChecks
             _options = options.Value;
         }
 
-        protected override string FolderPath => NuGetCachePath;
+        protected override string FolderPath =>
+            _options.LocalTestMode
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages")
+                : NuGetCachePath;
 
         protected override long WarningThresholdMb => _options.NuGetCache.WarningThresholdMb;
 
         protected override long ErrorThresholdMb => _options.NuGetCache.ErrorThresholdMb;
 
-        protected override string FolderDisplayName => "NuGet cache";
+        protected override string FolderDisplayName =>
+            _options.LocalTestMode ? "NuGet cache (test mode)" : "NuGet cache";
 
         protected override bool ShouldRunCheck()
         {
-            // Only run this check if we're in Azure (C:\home exists)
-            return Directory.Exists(@"C:\home");
+            // In test mode, always run. Otherwise only run if we're in Azure (C:\home exists)
+            return _options.LocalTestMode || Directory.Exists(@"C:\home");
         }
     }
 }

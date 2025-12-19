@@ -11,6 +11,12 @@ namespace Umbraco.Community.Cloud.HealthChecks
         public const string SectionName = "CloudHealthChecks";
 
         /// <summary>
+        /// Enable local test mode to test health checks outside of Azure environment.
+        /// When enabled, uses local paths for testing Azure and NuGet health checks.
+        /// </summary>
+        public bool LocalTestMode { get; set; } = false;
+
+        /// <summary>
         /// Options for Azure Storage health check
         /// </summary>
         public AzureStorageOptions AzureStorage { get; set; } = new();

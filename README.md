@@ -45,7 +45,7 @@ The health checks are grouped under **"Umbraco Cloud"** for easy identification.
 
 All health check thresholds can be customized via `appsettings.json`. The package uses sensible defaults, but you can override them to suit your environment.
 
-See [CONFIGURATION.md](CONFIGURATION.md) for detailed configuration options and examples.
+See the [Configuration Guide](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/blob/develop/v1/CONFIGURATION.md) for detailed configuration options and examples.
 
 Quick example:
 
@@ -63,6 +63,24 @@ Quick example:
 ## Requirements
 
 - Umbraco CMS v17+
+
+## Proactive Monitoring
+
+To get the most value from these health checks, set up automated monitoring using Umbraco's built-in notification system or third-party integrations.
+
+### Built-in Email Notifications
+
+Umbraco includes a built-in email notification system for health checks. Configure it in **Settings → Health Check** to receive email alerts when issues are detected. See the [official documentation](https://docs.umbraco.com/umbraco-cms/reference/configuration/healthchecks#notification) for setup instructions. This allows you to:
+- Get early warnings when storage reaches 75% capacity
+- Receive critical alerts at 90% usage before your site runs out of space
+- Monitor log file growth and aging
+- Take proactive action to prevent downtime
+
+### Slack Notifications
+
+For real-time team alerts, combine this package with the [Health Check Slack Notification Method](https://marketplace.umbraco.com/package/our.umbraco.healthcheckslacknotificationmethod) package. This sends automated Slack messages to your team channel when storage thresholds are exceeded.
+
+Both notification methods are especially valuable in Umbraco Cloud environments where storage space is limited and can impact site availability.
 
 ## Contributing
 

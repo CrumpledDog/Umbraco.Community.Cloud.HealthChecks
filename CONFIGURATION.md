@@ -7,6 +7,7 @@ You can configure the thresholds for each health check in your `appsettings.json
 ```json
 {
   "CloudHealthChecks": {
+    "LocalTestMode": false,
     "AzureStorage": {
       "WarningThresholdPercentage": 75.0,
       "ErrorThresholdPercentage": 90.0
@@ -26,6 +27,17 @@ You can configure the thresholds for each health check in your `appsettings.json
 ```
 
 ## Configuration Options
+
+### Global Options
+
+- **LocalTestMode** (default: `false`)  
+  Enable local test mode for testing health checks outside of Azure environment.  
+  When enabled:
+  - **Azure Storage Check** uses application root and wwwroot folders instead of `C:\home` and `C:\local`
+  - **NuGet Cache Check** uses `%USERPROFILE%\.nuget\packages` instead of `C:\home\.nuget`
+  - Both checks will run even when not in Azure environment
+  
+  **Usage:** Set to `true` in your local development appsettings.Development.json to test the health checks.
 
 ### Azure Storage Health Check
 
@@ -57,19 +69,18 @@ You can configure the thresholds for each health check in your `appsettings.json
 - **FileAgeErrorThresholdDays** (default: `730`)  
   Error threshold in days for old log files
 
-## Example: Custom Configuration
+## Example Configurations
 
-To increase the log folder size thresholds for a high-traffic site:
+### Local Development Testing
+
+To test Azure and NuGet health checks on your local machine, add to `appsettings.Development.json`:
 
 ```json
 {
   "CloudHealthChecks": {
-    "UmbracoLogs": {
-      "WarningThresholdMb": 500,
-      "ErrorThresholdMb": 1024,
-      "FileAgeWarningThresholdDays": 365,
-      "FileAgeErrorThresholdDays": 547
-    }
+    "LocalTestMode": true
   }
 }
 ```
+
+This will enable the Azure Storage and NuGet Cache checks using local paths for testing.
