@@ -113,9 +113,9 @@ jobs:
       working-directory: ${{ env.PATH_TO_EXTENSION }}
       run: |
         cd Client
-        npm run build        
+        npm run build
 
-    - name: Build sln
+    - name: Build slnx
       run: dotnet build ${{ github.workspace }}/*.slnx -c Release        
 
     - name: Pack NuGet Package
