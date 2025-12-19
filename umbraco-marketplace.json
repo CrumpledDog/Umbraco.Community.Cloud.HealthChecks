@@ -1,6 +1,6 @@
 {
   "$schema": "https://marketplace.umbraco.com/umbraco-marketplace-schema.json",
-  "Title":  "Umbraco.Community.Cloud.HealthChecks" ,
+  "Title":  "Umbraco Cloud Health Checks" ,
   "AuthorDetails": {
     "Name": "Jeavon Leopold",
     "Description": "Umbraco MVP, CMS and documentation contributor",

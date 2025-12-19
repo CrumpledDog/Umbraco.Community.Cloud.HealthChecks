@@ -12,7 +12,7 @@
   <PropertyGroup>
     <PackageId>Umbraco.Community.Cloud.HealthChecks</PackageId>
     <Product>Umbraco.Community.Cloud.HealthChecks</Product>
-    <Title>Umbraco.Community.Cloud.HealthChecks</Title>
+    <Title>Umbraco Cloud Health Checks</Title>
     <PackageTags>umbraco plugin package umbraco-marketplace cloud health checks</PackageTags>
     <PackageDescription>A package for adding Umbraco Cloud health checks</PackageDescription>
     <RepositoryUrl>https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks</RepositoryUrl>
