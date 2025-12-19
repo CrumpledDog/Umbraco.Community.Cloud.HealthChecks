@@ -41,6 +41,25 @@ After installation, the health checks will automatically appear in the Umbraco b
 
 The health checks are grouped under **"Umbraco Cloud"** for easy identification.
 
+## Configuration
+
+All health check thresholds can be customized via `appsettings.json`. The package uses sensible defaults, but you can override them to suit your environment.
+
+See [CONFIGURATION.md](CONFIGURATION.md) for detailed configuration options and examples.
+
+Quick example:
+
+```json
+{
+  "CloudHealthChecks": {
+    "UmbracoLogs": {
+      "WarningThresholdMb": 200,
+      "ErrorThresholdMb": 1000
+    }
+  }
+}
+```
+
 ## Requirements
 
 - Umbraco CMS v17+

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
 
 namespace Umbraco.Community.Cloud.HealthChecks
@@ -11,22 +12,26 @@ namespace Umbraco.Community.Cloud.HealthChecks
     public class UmbracoLogsFolderSizeHealthCheck : FolderSizeHealthCheckBase
     {
         private readonly IHostEnvironment _hostEnvironment;
+        private readonly CloudHealthChecksOptions _options;
 
-        public UmbracoLogsFolderSizeHealthCheck(IHostEnvironment hostEnvironment)
+        public UmbracoLogsFolderSizeHealthCheck(
+            IHostEnvironment hostEnvironment,
+            IOptions<CloudHealthChecksOptions> options)
         {
             _hostEnvironment = hostEnvironment;
+            _options = options.Value;
         }
 
         protected override string FolderPath => Path.Combine(_hostEnvironment.ContentRootPath, "umbraco", "Logs");
 
-        protected override long WarningThresholdMb => 100; // 100 MB
+        protected override long WarningThresholdMb => _options.UmbracoLogs.WarningThresholdMb;
 
-        protected override long ErrorThresholdMb => 500; // 500 MB
+        protected override long ErrorThresholdMb => _options.UmbracoLogs.ErrorThresholdMb;
 
         protected override string FolderDisplayName => "Umbraco Logs folder";
 
-        protected override int FileAgeWarningThresholdDays => 550; // Warning after 30 days
+        protected override int FileAgeWarningThresholdDays => _options.UmbracoLogs.FileAgeWarningThresholdDays;
 
-        protected override int FileAgeErrorThresholdDays => 730; // Error after 90 days
+        protected override int FileAgeErrorThresholdDays => _options.UmbracoLogs.FileAgeErrorThresholdDays;
     }
 }

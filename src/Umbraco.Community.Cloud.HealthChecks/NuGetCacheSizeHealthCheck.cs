@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
 
 namespace Umbraco.Community.Cloud.HealthChecks
@@ -10,12 +11,18 @@ namespace Umbraco.Community.Cloud.HealthChecks
     public class NuGetCacheSizeHealthCheck : FolderSizeHealthCheckBase
     {
         private const string NuGetCachePath = @"C:\home\.nuget";
+        private readonly CloudHealthChecksOptions _options;
+
+        public NuGetCacheSizeHealthCheck(IOptions<CloudHealthChecksOptions> options)
+        {
+            _options = options.Value;
+        }
 
         protected override string FolderPath => NuGetCachePath;
 
-        protected override long WarningThresholdMb => 2560; // 500 MB
+        protected override long WarningThresholdMb => _options.NuGetCache.WarningThresholdMb;
 
-        protected override long ErrorThresholdMb => 3072; // 1 GB
+        protected override long ErrorThresholdMb => _options.NuGetCache.ErrorThresholdMb;
 
         protected override string FolderDisplayName => "NuGet cache";
 
