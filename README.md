@@ -1,5 +1,9 @@
 # Umbraco Community Cloud Health Checks
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/src/Umbraco.Community.Cloud.HealthChecks/cloud-healthchecks.png" alt="Cloud Health Checks" width="128" height="128">
+</p>
+
 A package that provides health checks for Umbraco Cloud environments, helping you monitor critical system resources and storage usage.
 
 ## Overview
