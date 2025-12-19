@@ -18,7 +18,7 @@ jobs:
     name: Setup
     runs-on: ubuntu-latest
     outputs:
-      semver: ${{ steps.semantic.outputs.new_release_version }}
+      semver: ${{ steps.set-version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v5
@@ -42,8 +42,26 @@ jobs:
             @semantic-release/github
             conventional-changelog-conventionalcommits
 
+      - name: Set Version
+        id: set-version
+        run: |
+          if [ -n "${{ steps.semantic.outputs.new_release_version }}" ]; then
+            echo "version=${{ steps.semantic.outputs.new_release_version }}" >> $GITHUB_OUTPUT
+          else
+            # Get the latest tag from git
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LATEST_TAG" ]; then
+              # Remove 'v' prefix if present
+              LATEST_VERSION=${LATEST_TAG#v}
+              echo "version=${LATEST_VERSION}-dev.${{ github.run_number }}" >> $GITHUB_OUTPUT
+            else
+              echo "version=0.1.0-dev.${{ github.run_number }}" >> $GITHUB_OUTPUT
+            fi
+          fi
+
       - name: Echo the version
         run: |
+          echo "Version to use: '${{ steps.set-version.outputs.version }}'"
           echo "New release version: '${{ steps.semantic.outputs.new_release_version }}'"
           echo "New release major: '${{ steps.semantic.outputs.new_release_major_version }}'"
           echo "New release minor: '${{ steps.semantic.outputs.new_release_minor_version }}'"
@@ -112,10 +130,10 @@ jobs:
       working-directory: ${{ env.PATH_TO_EXTENSION }}
       run: |
         cd Client
-        npm run build        
+        npm run build
 
-    - name: Build sln
-      run: dotnet build ${{ github.workspace }}/*.slnx -c Release        
+    - name: Build slnx
+      run: dotnet build ${{ github.workspace }}/*.slnx -c Release
 
     - name: Pack NuGet Package
       working-directory: ${{ env.PATH_TO_EXTENSION }}
