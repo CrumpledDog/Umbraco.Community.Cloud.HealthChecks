@@ -1,10 +1,12 @@
-<Project Sdk="Microsoft.NET.Sdk.Razor">
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
     <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
+    <EnableDefaultContentItems>false</EnableDefaultContentItems>
+    <NoWarn>$(NoWarn);NU5118</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -21,13 +23,11 @@
     <Version>$(PackageVersion)</Version>
     <FileVersion>$(FileVersionNumber)</FileVersion>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <Authors>Crumpled Dog and Umbraco Community</Authors>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Umbraco.Cms.Web.Website" Version="*" />
-    <PackageReference Include="Umbraco.Cms.Web.Common" Version="*" />
-    <PackageReference Include="Umbraco.Cms.Api.Common" Version="*" />
-    <PackageReference Include="Umbraco.Cms.Api.Management" Version="*" />
+    <PackageReference Include="Umbraco.Cms.Web.Common" Version="[17.0.0,)" />
   </ItemGroup>
 
   <ItemGroup>
@@ -43,11 +43,22 @@
   </ItemGroup>
 
   <ItemGroup>
+      <Content Include="buildTransitive\**" PackagePath="buildTransitive" />
+      <Content Include="appsettings-schema.Umbraco.Community.Cloud.HealthChecks.json" PackagePath="" />
+      <Content Include="wwwroot\**" />
+      <Content Include="Views\**\*.cshtml" />
+  </ItemGroup>
+
+  <ItemGroup>
       <None Update="cloud-healthchecks.png">
         <Pack>True</Pack>
         <PackagePath>\</PackagePath>
       </None>
      <None Include="..\..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="README.md">
       <Pack>True</Pack>
       <PackagePath>\</PackagePath>
     </None>

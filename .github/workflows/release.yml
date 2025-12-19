@@ -6,6 +6,12 @@ env:
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_to_nuget:
+        description: 'Publish to nuget.org'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   setup:
@@ -122,5 +128,9 @@ jobs:
 
     - name: Push NuGet Package
       if: ${{ needs.setup.outputs.new_release_published == 'true' }}
-      run: dotnet nuget push "${{ env.PATH_TO_EXTENSION }}/bin/Release/Umbraco.Community.Forms.OnTheTurn.*.nupkg"  --api-key ${{ secrets.GITHUB_TOKEN }} --source "github" --skip-duplicate
+      run: dotnet nuget push "${{ env.PATH_TO_EXTENSION }}/bin/Release/Umbraco.Community.Cloud.HealthChecks.*.nupkg"  --api-key ${{ secrets.GITHUB_TOKEN }} --source "github" --skip-duplicate
+      
+    - name: Push to Nuget.org
+      if: ${{ needs.setup.outputs.new_release_published == 'true' && github.event.inputs.publish_to_nuget == 'true' && startsWith(github.ref, 'refs/heads/release/') && !contains(needs.setup.outputs.semver, '-') }}
+      run: dotnet nuget push "${{ env.PATH_TO_EXTENSION }}/bin/Release/Umbraco.Community.Cloud.HealthChecks.*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
       

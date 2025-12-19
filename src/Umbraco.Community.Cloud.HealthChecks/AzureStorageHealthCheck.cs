@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
 
 namespace Umbraco.Community.Cloud.HealthChecks
@@ -13,8 +15,16 @@ namespace Umbraco.Community.Cloud.HealthChecks
     {
         private const string HomeDirectory = @"C:\home";
         private const string LocalDirectory = @"C:\local";
-        private const double WarningThresholdPercentage = 75.0; // Warning at 75% usage
-        private const double ErrorThresholdPercentage = 90.0; // Error at 90% usage
+        private readonly CloudHealthChecksOptions _options;
+        private readonly IHostEnvironment _hostEnvironment;
+
+        public AzureStorageHealthCheck(
+            IOptions<CloudHealthChecksOptions> options,
+            IHostEnvironment hostEnvironment)
+        {
+            _options = options.Value;
+            _hostEnvironment = hostEnvironment;
+        }
 
         public override HealthCheckStatus ExecuteAction(HealthCheckAction action)
         {
@@ -36,24 +46,44 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
             }
 
-            // Only run this check if we're in Azure (C:\home exists)
-            if (!Directory.Exists(HomeDirectory))
+            // Determine paths based on mode
+            string homeDir, localDir;
+            string homeDisplayName, localDisplayName;
+
+            if (_options.LocalTestMode)
             {
-                results.Add(new HealthCheckStatus(
-                    "This check is only applicable in Azure Web Apps environment.")
+                // In test mode, use the application's content root
+                homeDir = _hostEnvironment.ContentRootPath;
+                localDir = Path.Combine(_hostEnvironment.ContentRootPath, "wwwroot");
+                homeDisplayName = "Application root (test mode)";
+                localDisplayName = "wwwroot folder (test mode)";
+            }
+            else
+            {
+                // Production mode - only run if we're in Azure (C:\home exists)
+                if (!Directory.Exists(HomeDirectory))
                 {
-                    ResultType = StatusResultType.Info
-                });
-                return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
+                    results.Add(new HealthCheckStatus(
+                        "This check is only applicable in Azure Web Apps environment.")
+                    {
+                        ResultType = StatusResultType.Info
+                    });
+                    return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
+                }
+
+                homeDir = HomeDirectory;
+                localDir = LocalDirectory;
+                homeDisplayName = "C:\\home";
+                localDisplayName = "C:\\local";
             }
 
-            // Check C:\home
-            CheckDirectoryUsage(HomeDirectory, "C:\\home", results);
+            // Check home directory
+            CheckDirectoryUsage(homeDir, homeDisplayName, results);
 
-            // Check C:\local if it exists
-            if (Directory.Exists(LocalDirectory))
+            // Check local directory if it exists
+            if (Directory.Exists(localDir))
             {
-                CheckDirectoryUsage(LocalDirectory, "C:\\local", results);
+                CheckDirectoryUsage(localDir, localDisplayName, results);
             }
 
             return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
@@ -84,15 +114,15 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 var message = $"{displayName} usage: {totalMb:N0} MB total; {freeMb:N0} MB free ({usedMb:N0} MB used, {usedPercentage:F1}%)";
 
                 StatusResultType resultType;
-                if (usedPercentage >= ErrorThresholdPercentage)
+                if (usedPercentage >= _options.AzureStorage.ErrorThresholdPercentage)
                 {
                     resultType = StatusResultType.Error;
-                    message += $" - Critical: Usage exceeds {ErrorThresholdPercentage}% threshold.";
+                    message += $" - Critical: Usage exceeds {_options.AzureStorage.ErrorThresholdPercentage}% threshold.";
                 }
-                else if (usedPercentage >= WarningThresholdPercentage)
+                else if (usedPercentage >= _options.AzureStorage.WarningThresholdPercentage)
                 {
                     resultType = StatusResultType.Warning;
-                    message += $" - Warning: Usage exceeds {WarningThresholdPercentage}% threshold.";
+                    message += $" - Warning: Usage exceeds {_options.AzureStorage.WarningThresholdPercentage}% threshold.";
                 }
                 else
                 {

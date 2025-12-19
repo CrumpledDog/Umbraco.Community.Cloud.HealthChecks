@@ -1,0 +1,6 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+	<Import Project="..\buildMultiTargeting\Umbraco.Community.Cloud.HealthChecks.props" />
+	<ItemGroup>
+		<UmbracoJsonSchemaFiles Include="$(MSBuildThisFileDirectory)..\appsettings-schema.Umbraco.Community.Cloud.HealthChecks.json" Weight="-50" />
+	</ItemGroup>
+</Project>
