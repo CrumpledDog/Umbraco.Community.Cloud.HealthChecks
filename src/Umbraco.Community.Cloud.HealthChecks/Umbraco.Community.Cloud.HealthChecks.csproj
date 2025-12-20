@@ -7,6 +7,11 @@
     <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
     <EnableDefaultContentItems>false</EnableDefaultContentItems>
     <NoWarn>$(NoWarn);NU5118</NoWarn>
+    
+    <!-- Symbol file configuration -->
+    <DebugType>embedded</DebugType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <PropertyGroup>
