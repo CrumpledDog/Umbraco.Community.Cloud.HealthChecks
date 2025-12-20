@@ -1,4 +1,4 @@
-# Umbraco Community Cloud Health Checks
+# Umbraco Cloud Health Checks
 
 <p align="center">
   <img src="src/Umbraco.Community.Cloud.HealthChecks/cloud-healthchecks.png" alt="Cloud Health Checks" width="128" height="128">

@@ -1,4 +1,4 @@
-# Umbraco Community Cloud Health Checks
+# Umbraco Cloud Health Checks
 
 ![Cloud Health Checks](https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/src/Umbraco.Community.Cloud.HealthChecks/cloud-healthchecks.png)
 
