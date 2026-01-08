@@ -9,12 +9,13 @@ namespace Umbraco.Community.Cloud.HealthChecks
     [HealthCheck(
         "2E8F9A3B-5D4C-4F1E-9B7A-6C8D2E4F5A9B",
         "Azure Storage Usage",
-        Description = "Reports storage usage for C:\\home and C:\\local in Azure Web Apps",
+        Description = "Reports storage usage for C:\\home, C:\\local, and D:\\local in Azure Web Apps",
         Group = "Umbraco Cloud")]
     public class AzureStorageHealthCheck : HealthCheck
     {
         private const string HomeDirectory = @"C:\home";
         private const string LocalDirectory = @"C:\local";
+        private const string LocalTempDirectory = @"D:\local";
         private readonly CloudHealthChecksOptions _options;
         private readonly IHostEnvironment _hostEnvironment;
 
@@ -47,16 +48,18 @@ namespace Umbraco.Community.Cloud.HealthChecks
             }
 
             // Determine paths based on mode
-            string homeDir, localDir;
-            string homeDisplayName, localDisplayName;
+            string homeDir, localDir, localTempDir;
+            string homeDisplayName, localDisplayName, localTempDisplayName;
 
             if (_options.LocalTestMode)
             {
                 // In test mode, use the application's content root
                 homeDir = _hostEnvironment.ContentRootPath;
                 localDir = Path.Combine(_hostEnvironment.ContentRootPath, "wwwroot");
+                localTempDir = Path.GetTempPath();
                 homeDisplayName = "Application root (test mode)";
                 localDisplayName = "wwwroot folder (test mode)";
+                localTempDisplayName = "System temp folder (test mode)";
             }
             else
             {
@@ -73,23 +76,31 @@ namespace Umbraco.Community.Cloud.HealthChecks
 
                 homeDir = HomeDirectory;
                 localDir = LocalDirectory;
+                localTempDir = LocalTempDirectory;
                 homeDisplayName = "C:\\home";
                 localDisplayName = "C:\\local";
+                localTempDisplayName = "D:\\local";
             }
 
             // Check home directory
-            CheckDirectoryUsage(homeDir, homeDisplayName, results);
+            CheckDirectoryUsage(homeDir, homeDisplayName, results, _options.AzureStorage.WarningThresholdPercentage, _options.AzureStorage.ErrorThresholdPercentage);
 
             // Check local directory if it exists
             if (Directory.Exists(localDir))
             {
-                CheckDirectoryUsage(localDir, localDisplayName, results);
+                CheckDirectoryUsage(localDir, localDisplayName, results, _options.AzureStorage.WarningThresholdPercentage, _options.AzureStorage.ErrorThresholdPercentage);
+            }
+
+            // Check local temp directory if it exists
+            if (Directory.Exists(localTempDir))
+            {
+                CheckDirectoryUsage(localTempDir, localTempDisplayName, results, _options.LocalTemp.WarningThresholdPercentage, _options.LocalTemp.ErrorThresholdPercentage);
             }
 
             return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
         }
 
-        private void CheckDirectoryUsage(string directory, string displayName, List<HealthCheckStatus> results)
+        private void CheckDirectoryUsage(string directory, string displayName, List<HealthCheckStatus> results, double warningThreshold, double errorThreshold, string additionalInfo = null)
         {
             try
             {
@@ -114,20 +125,25 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 var message = $"{displayName} usage: {totalMb:N0} MB total; {freeMb:N0} MB free ({usedMb:N0} MB used, {usedPercentage:F1}%)";
 
                 StatusResultType resultType;
-                if (usedPercentage >= _options.AzureStorage.ErrorThresholdPercentage)
+                if (usedPercentage >= errorThreshold)
                 {
                     resultType = StatusResultType.Error;
-                    message += $" - Critical: Usage exceeds {_options.AzureStorage.ErrorThresholdPercentage}% threshold.";
+                    message += $" - Critical: Usage exceeds {errorThreshold}% threshold.";
                 }
-                else if (usedPercentage >= _options.AzureStorage.WarningThresholdPercentage)
+                else if (usedPercentage >= warningThreshold)
                 {
                     resultType = StatusResultType.Warning;
-                    message += $" - Warning: Usage exceeds {_options.AzureStorage.WarningThresholdPercentage}% threshold.";
+                    message += $" - Warning: Usage exceeds {warningThreshold}% threshold.";
                 }
                 else
                 {
                     resultType = StatusResultType.Success;
                     message += " - Storage usage is within normal limits.";
+                }
+
+                if (!string.IsNullOrWhiteSpace(additionalInfo))
+                {
+                    message += $" {additionalInfo}";
                 }
 
                 results.Add(new HealthCheckStatus(message)
