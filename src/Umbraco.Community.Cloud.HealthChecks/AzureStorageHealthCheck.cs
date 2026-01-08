@@ -91,13 +91,27 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 CheckDirectoryUsage(localDir, localDisplayName, results, _options.AzureStorage.WarningThresholdPercentage, _options.AzureStorage.ErrorThresholdPercentage);
             }
 
-            // Check local temp directory if it exists
-            if (Directory.Exists(localTempDir))
+            // Check local temp directory if it exists and is on a different drive than C:\local
+            if (Directory.Exists(localTempDir) && !IsSameDrive(localDir, localTempDir))
             {
                 CheckDirectoryUsage(localTempDir, localTempDisplayName, results, _options.LocalTemp.WarningThresholdPercentage, _options.LocalTemp.ErrorThresholdPercentage);
             }
 
             return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
+        }
+
+        private static bool IsSameDrive(string path1, string path2)
+        {
+            try
+            {
+                var root1 = Path.GetPathRoot(Path.GetFullPath(path1));
+                var root2 = Path.GetPathRoot(Path.GetFullPath(path2));
+                return string.Equals(root1, root2, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private void CheckDirectoryUsage(string directory, string displayName, List<HealthCheckStatus> results, double warningThreshold, double errorThreshold, string? additionalInfo = null)
