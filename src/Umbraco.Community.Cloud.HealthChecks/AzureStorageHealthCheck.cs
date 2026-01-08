@@ -100,7 +100,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
             return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
         }
 
-        private void CheckDirectoryUsage(string directory, string displayName, List<HealthCheckStatus> results, double warningThreshold, double errorThreshold, string additionalInfo = null)
+        private void CheckDirectoryUsage(string directory, string displayName, List<HealthCheckStatus> results, double warningThreshold, double errorThreshold, string? additionalInfo = null)
         {
             try
             {
