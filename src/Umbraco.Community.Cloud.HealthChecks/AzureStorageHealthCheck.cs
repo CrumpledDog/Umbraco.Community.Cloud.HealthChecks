@@ -76,10 +76,16 @@ namespace Umbraco.Community.Cloud.HealthChecks
 
                 homeDir = HomeDirectory;
                 localDir = LocalDirectory;
-                localTempDir = LocalTempDirectory;
+                
+                // Get TEMP and strip \Temp suffix if present (e.g., C:\local\Temp -> C:\local)
+                var tempPath = Environment.GetEnvironmentVariable("TEMP") ?? LocalTempDirectory;
+                localTempDir = tempPath.EndsWith(@"\Temp", StringComparison.OrdinalIgnoreCase) 
+                    ? Directory.GetParent(tempPath)?.FullName ?? tempPath
+                    : tempPath;
+                
                 homeDisplayName = "C:\\home";
                 localDisplayName = "C:\\local";
-                localTempDisplayName = "D:\\local";
+                localTempDisplayName = localTempDir;
             }
 
             // Check home directory
