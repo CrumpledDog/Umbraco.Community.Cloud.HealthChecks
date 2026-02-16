@@ -1,14 +1,10 @@
 # Clear old Umbraco log files
 # Usage: .\Clear-UmbracoLogs.ps1 -DaysToKeep 30
+# Or set $DaysToKeep before running via iex
 
-param(
-    [Parameter(Mandatory=$false)]
-    [int]$DaysToKeep = 30
-)
-
-# If DaysToKeep wasn't passed as a parameter, check if it was set as a variable before calling the script
-if ($PSBoundParameters.Count -eq 0 -and (Get-Variable -Name 'DaysToKeep' -Scope 1 -ErrorAction SilentlyContinue)) {
-    $DaysToKeep = Get-Variable -Name 'DaysToKeep' -Scope 1 -ValueOnly
+# If DaysToKeep wasn't set by caller, use default of 30 days
+if (-not (Get-Variable -Name 'DaysToKeep' -ErrorAction SilentlyContinue)) {
+    $DaysToKeep = 30
 }
 
 # Safe output function for Kudu console compatibility
