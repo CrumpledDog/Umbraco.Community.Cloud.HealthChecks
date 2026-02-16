@@ -8,12 +8,15 @@ This folder contains PowerShell scripts to help maintain Umbraco Cloud environme
 Removes old Umbraco log files to free up disk space.
 
 **Usage:**
+
+Download and run with default 30 days retention:
 ```powershell
-# Download and run with default 30 days retention
 $url = 'https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/scripts/Clear-UmbracoLogs.ps1'
 irm $url | iex
+```
 
-# To specify custom days to keep (e.g., 300 days)
+To specify custom days to keep (e.g., 300 days):
+```powershell
 $url = 'https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/scripts/Clear-UmbracoLogs.ps1'
 $DaysToKeep = 300
 irm $url | iex
