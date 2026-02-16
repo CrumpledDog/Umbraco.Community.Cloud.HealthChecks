@@ -41,41 +41,11 @@ else
   FILE_VERSION="${SEMVER}.0"
 fi
 
-# Function to update file version in .csproj files
-update_file_version() {
-  local CSPROJ_PATH=$1
-  local FILE_VERSION=$2
-  local INFORMATIONAL_VERSION=$3
-  
-  if [ ! -f "$CSPROJ_PATH" ]; then
-    echo "Warning: $CSPROJ_PATH not found"
-    return
-  fi
-  
-  # Check if FileVersion element exists
-  if grep -q "<FileVersion>" "$CSPROJ_PATH"; then
-    # Update existing FileVersion
-    sed -i "s|<FileVersion>.*</FileVersion>|<FileVersion>$FILE_VERSION</FileVersion>|" "$CSPROJ_PATH"
-    echo "Updated FileVersion in $CSPROJ_PATH to $FILE_VERSION"
-  else
-    # Add FileVersion to the first PropertyGroup
-    sed -i "0,/<PropertyGroup>/s|<PropertyGroup>|<PropertyGroup>\n\t\t<FileVersion>$FILE_VERSION</FileVersion>|" "$CSPROJ_PATH"
-    echo "Added FileVersion to $CSPROJ_PATH with value $FILE_VERSION"
-  fi
-  
-  # Check if InformationalVersion element exists
-  if grep -q "<InformationalVersion>" "$CSPROJ_PATH"; then
-    # Update existing InformationalVersion
-    sed -i "s|<InformationalVersion>.*</InformationalVersion>|<InformationalVersion>$INFORMATIONAL_VERSION</InformationalVersion>|" "$CSPROJ_PATH"
-    echo "Updated InformationalVersion in $CSPROJ_PATH to $INFORMATIONAL_VERSION"
-  else
-    # Add InformationalVersion to the first PropertyGroup
-    sed -i "0,/<PropertyGroup>/s|<PropertyGroup>|<PropertyGroup>\n\t\t<InformationalVersion>$INFORMATIONAL_VERSION</InformationalVersion>|" "$CSPROJ_PATH"
-    echo "Added InformationalVersion to $CSPROJ_PATH with value $INFORMATIONAL_VERSION"
-  fi
-}
-
-# Update the main project file
-update_file_version "$PATH_TO_EXTENSION/Umbraco.Community.Cloud.HealthChecks.csproj" "$FILE_VERSION" "$SEMVER"
-
 echo "Version update completed successfully"
+echo "SEMVER=$SEMVER"
+echo "FILE_VERSION=$FILE_VERSION"
+
+# Output for GitHub Actions
+if [ -n "$GITHUB_OUTPUT" ]; then
+  echo "file_version=$FILE_VERSION" >> "$GITHUB_OUTPUT"
+fi
