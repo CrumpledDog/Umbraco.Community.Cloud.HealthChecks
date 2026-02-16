@@ -31,10 +31,16 @@ irm $url | iex
 Clears the NuGet package cache to free up disk space.
 
 **Usage:**
+
+Using the cleanup script (shows size before/after):
 ```powershell
-# Download and run
 $url = 'https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/scripts/Clear-NuGetCache.ps1'
 irm $url | iex
+```
+
+Or use the dotnet CLI directly (faster, no size info):
+```powershell
+dotnet nuget locals all --clear
 ```
 
 ## Running in Umbraco Cloud
