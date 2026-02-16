@@ -6,6 +6,11 @@ param(
     [int]$DaysToKeep = 30
 )
 
+# If DaysToKeep wasn't passed as a parameter, check if it was set as a variable before calling the script
+if ($PSBoundParameters.Count -eq 0 -and (Get-Variable -Name 'DaysToKeep' -Scope 1 -ErrorAction SilentlyContinue)) {
+    $DaysToKeep = Get-Variable -Name 'DaysToKeep' -Scope 1 -ValueOnly
+}
+
 # Safe output function for Kudu console compatibility
 function Write-Message {
     param([string]$Message)
