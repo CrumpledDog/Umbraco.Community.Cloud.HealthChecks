@@ -38,7 +38,18 @@ if [[ $SEMVER == *"-"* ]]; then
   PRERELEASE_NUM=$(echo "$PRERELEASE" | grep -o '[0-9]\+$' || echo "0")
   FILE_VERSION="${BASE_VERSION}.${PRERELEASE_NUM}"
 else
-  FILE_VERSION="${SEMVER}.0"
+  # Stable release: Find highest pre-release number for this version and add 1
+  BASE_VERSION="$SEMVER"
+  # Get all tags matching this version with pre-release suffix
+  MAX_PRERELEASE=$(git tag -l "v${BASE_VERSION}-*" | grep -o '[0-9]\+$' | sort -n | tail -1)
+  if [ -z "$MAX_PRERELEASE" ]; then
+    # No pre-releases found, use 1
+    FILE_VERSION="${BASE_VERSION}.1"
+  else
+    # Use max pre-release number + 1
+    NEXT_NUM=$((MAX_PRERELEASE + 1))
+    FILE_VERSION="${BASE_VERSION}.${NEXT_NUM}"
+  fi
 fi
 
 echo "Version update completed successfully"
