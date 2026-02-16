@@ -23,7 +23,7 @@ if ($env:HOME) {
 
 if (-not (Test-Path $logsPath)) {
     Write-Warning "Logs folder not found at: $logsPath"
-    Write-Host "Tip: Run this from your Umbraco site root or in Azure Kudu"
+    Write-Output "Tip: Run this from your Umbraco site root or in Azure Kudu"
     exit 1
 }
 
@@ -31,12 +31,12 @@ $cutoffDate = (Get-Date).AddDays(-$DaysToKeep)
 $files = Get-ChildItem -Path $logsPath -File -Recurse | Where-Object { $_.LastWriteTime -lt $cutoffDate }
 
 if ($files.Count -eq 0) {
-    Write-Host "No log files older than $DaysToKeep days found."
+    Write-Output "No log files older than $DaysToKeep days found."
     exit 0
 }
 
 $totalSize = ($files | Measure-Object -Property Length -Sum).Sum / 1MB
-Write-Host "Found $($files.Count) log files older than $DaysToKeep days (Total: $($totalSize.ToString('F2')) MB)"
+Write-Output "Found $($files.Count) log files older than $DaysToKeep days (Total: $($totalSize.ToString('F2')) MB)"
 
 $files | Remove-Item -Force
-Write-Host "Successfully removed $($files.Count) old log files."
+Write-Output "Successfully removed $($files.Count) old log files."

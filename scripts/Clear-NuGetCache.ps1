@@ -18,14 +18,14 @@ if ($env:NUGET_PACKAGES) {
 
 if (-not (Test-Path $nugetPath)) {
     Write-Warning "NuGet cache folder not found at: $nugetPath"
-    Write-Host "Tip: Set the NUGET_PACKAGES environment variable to specify the cache location"
+    Write-Output "Tip: Set the NUGET_PACKAGES environment variable to specify the cache location"
     exit 1
 }
 
 $sizeBeforeMB = (Get-ChildItem -Path $nugetPath -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
 
-Write-Host "Clearing NuGet cache at: $nugetPath"
-Write-Host "Current size: $($sizeBeforeMB.ToString('F2')) MB"
+Write-Output "Clearing NuGet cache at: $nugetPath"
+Write-Output "Current size: $($sizeBeforeMB.ToString('F2')) MB"
 
 # Use dotnet CLI to clear the cache properly
 dotnet nuget locals all --clear
@@ -36,4 +36,4 @@ if (Test-Path $nugetPath) {
 }
 
 $freedMB = $sizeBeforeMB - $sizeAfterMB
-Write-Host "Successfully cleared cache. Freed: $($freedMB.ToString('F2')) MB"
+Write-Output "Successfully cleared cache. Freed: $($freedMB.ToString('F2')) MB"
