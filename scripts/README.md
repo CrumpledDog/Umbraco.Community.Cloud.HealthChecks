@@ -9,11 +9,14 @@ Removes old Umbraco log files to free up disk space.
 
 **Usage:**
 ```powershell
-# Download and run in one line (PowerShell 7+)
-irm https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/scripts/Clear-UmbracoLogs.ps1 | iex
+# Download and run with default 30 days retention
+$url = 'https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/scripts/Clear-UmbracoLogs.ps1'
+irm $url | iex
 
-# Or specify how many days to keep
-irm https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/scripts/Clear-UmbracoLogs.ps1 | iex -Args 30
+# To specify custom days to keep (e.g., 300 days)
+$url = 'https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/scripts/Clear-UmbracoLogs.ps1'
+$DaysToKeep = 300
+irm $url | iex
 ```
 
 **Parameters:**
@@ -26,17 +29,18 @@ Clears the NuGet package cache to free up disk space.
 
 **Usage:**
 ```powershell
-# Download and run in one line
-irm https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/scripts/Clear-NuGetCache.ps1 | iex
+# Download and run
+$url = 'https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/scripts/Clear-NuGetCache.ps1'
+irm $url | iex
 ```
 
 ## Running in Umbraco Cloud
 
 You can run these scripts in the Kudu console (Advanced Tools > Debug Console > PowerShell):
 
-1. Navigate to your site root: `cd D:\home\site\wwwroot`
-2. Run the one-liner command shown above
-3. The script will clean up the files and show you how much space was freed
+1. Open the PowerShell tab in Kudu
+2. Run the one-liner command shown above (works from any directory)
+3. The script will automatically detect the Azure environment and clean up the files, showing you how much space was freed
 
 ## Security Note
 
