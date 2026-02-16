@@ -35,5 +35,10 @@ namespace Umbraco.Community.Cloud.HealthChecks
             // In test mode, always run. Otherwise only run if we're in Azure (C:\home exists)
             return _options.LocalTestMode || Directory.Exists(@"C:\home");
         }
+
+        protected override string? GetCleanupScriptUrl()
+        {
+            return "https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/tree/develop/v1/scripts#nuget";
+        }
     }
 }

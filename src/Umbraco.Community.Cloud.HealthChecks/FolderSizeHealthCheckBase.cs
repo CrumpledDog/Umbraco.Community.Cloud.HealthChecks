@@ -53,6 +53,14 @@ namespace Umbraco.Community.Cloud.HealthChecks
             return string.Empty;
         }
 
+        /// <summary>
+        /// Gets the URL to a cleanup script for this health check
+        /// </summary>
+        protected virtual string? GetCleanupScriptUrl()
+        {
+            return null;
+        }
+
         public override HealthCheckStatus ExecuteAction(HealthCheckAction action)
         {
             throw new InvalidOperationException($"{GetType().Name} has no actions");
@@ -87,8 +95,8 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
                 }
 
-                // Calculate folder size
-                var sizeInBytes = GetDirectorySize(folderPath);
+                // Calculate folder size, file count, and oldest file in a single pass
+                var (sizeInBytes, fileCount, oldestFile) = GetDirectoryInfo(folderPath);
                 var sizeInMb = sizeInBytes / (1024.0 * 1024.0);
                 var sizeInGb = sizeInBytes / (1024.0 * 1024.0 * 1024.0);
 
@@ -96,17 +104,12 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     ? $"{sizeInGb:F2} GB"
                     : $"{sizeInMb:F2} MB";
 
-                // Get file count
-                var fileCount = Directory.GetFiles(folderPath, "*", SearchOption.AllDirectories).Length;
-
                 var message = $"{FolderDisplayName} size: {sizeDisplay} ({fileCount:N0} files)";
 
                 // Only check file age if thresholds are configured
-                FileInfo? oldestFile = null;
                 double oldestFileAge = 0;
                 if (FileAgeWarningThresholdDays > 0 || FileAgeErrorThresholdDays > 0)
                 {
-                    oldestFile = GetOldestFile(folderPath);
                     oldestFileAge = oldestFile != null ? (DateTime.Now - oldestFile.LastWriteTime).TotalDays : 0;
 
                     if (oldestFile != null)
@@ -158,20 +161,37 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
 
                 // Build final message
+                var cleanupUrl = GetCleanupScriptUrl();
+                
                 if (warnings.Any())
                 {
-                    message += " - " + string.Join(". ", warnings) + ". Consider cleaning up.";
+                    if (!string.IsNullOrEmpty(cleanupUrl))
+                    {
+                        message += " - " + string.Join(". ", warnings) + ". Follow the 'Read more' link for cleanup instructions.";
+                    }
+                    else
+                    {
+                        message += " - " + string.Join(". ", warnings) + ". Consider cleaning up.";
+                    }
                 }
                 else
                 {
                     message += " - Within normal limits.";
                 }
 
-                results.Add(new HealthCheckStatus(message)
+                var status = new HealthCheckStatus(message)
                 {
                     ResultType = resultType,
                     Description = $"Path: {folderPath}"
-                });
+                };
+
+                // Add cleanup script link as a "Read more" button if available
+                if (!string.IsNullOrEmpty(cleanupUrl))
+                {
+                    status.ReadMoreLink = cleanupUrl;
+                }
+
+                results.Add(status);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -193,78 +213,55 @@ namespace Umbraco.Community.Cloud.HealthChecks
             return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
         }
 
-        protected long GetDirectorySize(string path)
+        /// <summary>
+        /// Efficiently gets directory size, file count, and oldest file in a single pass
+        /// </summary>
+        protected (long size, int count, FileInfo? oldestFile) GetDirectoryInfo(string path)
         {
+            long totalSize = 0;
+            int fileCount = 0;
+            FileInfo? oldestFile = null;
+
             try
             {
-                var directoryInfo = new DirectoryInfo(path);
+                // Use EnumerationOptions for better performance and control
+                var enumerationOptions = new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    IgnoreInaccessible = true, // Skip files/folders we can't access
+                    ReturnSpecialDirectories = false
+                };
 
-                // Get size of all files in this directory
-                long size = directoryInfo.GetFiles()
-                    .Sum(file => file.Length);
-
-                // Recursively get size of subdirectories
-                foreach (var directory in directoryInfo.GetDirectories())
+                // Single pass through all files
+                foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", enumerationOptions))
                 {
                     try
                     {
-                        size += GetDirectorySize(directory.FullName);
-                    }
-                    catch (UnauthorizedAccessException)
-                    {
-                        // Skip directories we can't access
-                        continue;
-                    }
-                }
+                        totalSize += file.Length;
+                        fileCount++;
 
-                return size;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return 0;
-            }
-        }
-
-        protected FileInfo? GetOldestFile(string path)
-        {
-            try
-            {
-                var directoryInfo = new DirectoryInfo(path);
-                FileInfo? oldestFile = null;
-
-                // Check all files in this directory
-                foreach (var file in directoryInfo.GetFiles())
-                {
-                    if (oldestFile == null || file.LastWriteTime < oldestFile.LastWriteTime)
-                    {
-                        oldestFile = file;
-                    }
-                }
-
-                // Recursively check subdirectories
-                foreach (var directory in directoryInfo.GetDirectories())
-                {
-                    try
-                    {
-                        var oldestInSubdir = GetOldestFile(directory.FullName);
-                        if (oldestInSubdir != null && (oldestFile == null || oldestInSubdir.LastWriteTime < oldestFile.LastWriteTime))
+                        if (oldestFile == null || file.LastWriteTime < oldestFile.LastWriteTime)
                         {
-                            oldestFile = oldestInSubdir;
+                            oldestFile = file;
                         }
                     }
                     catch (UnauthorizedAccessException)
                     {
-                        // Skip directories we can't access
+                        // Skip individual files we can't access
                         continue;
                     }
                 }
-
-                return oldestFile;
             }
             catch (UnauthorizedAccessException)
             {
-                return null;
+                // Can't access the root directory
             }
+            catch (DirectoryNotFoundException)
+            {
+                // Directory doesn't exist
+            }
+
+            return (totalSize, fileCount, oldestFile);
         }
     }
 }

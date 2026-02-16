@@ -33,5 +33,10 @@ namespace Umbraco.Community.Cloud.HealthChecks
         protected override int FileAgeWarningThresholdDays => _options.UmbracoLogs.FileAgeWarningThresholdDays;
 
         protected override int FileAgeErrorThresholdDays => _options.UmbracoLogs.FileAgeErrorThresholdDays;
+
+        protected override string? GetCleanupScriptUrl()
+        {
+            return "https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/tree/develop/v1/scripts#logs";
+        }
     }
 }

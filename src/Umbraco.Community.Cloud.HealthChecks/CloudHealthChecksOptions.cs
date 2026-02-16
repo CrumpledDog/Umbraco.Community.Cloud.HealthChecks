@@ -31,6 +31,11 @@ namespace Umbraco.Community.Cloud.HealthChecks
         /// </summary>
         public UmbracoLogsOptions UmbracoLogs { get; set; } = new();
 
+        /// <summary>
+        /// Options for Local Temp folder health check
+        /// </summary>
+        public LocalTempOptions LocalTemp { get; set; } = new();
+
         public class AzureStorageOptions
         {
             /// <summary>
@@ -78,6 +83,19 @@ namespace Umbraco.Community.Cloud.HealthChecks
             /// Error threshold in days for old log files (default: 730 days)
             /// </summary>
             public int FileAgeErrorThresholdDays { get; set; } = 730;
+        }
+
+        public class LocalTempOptions
+        {
+            /// <summary>
+            /// Warning threshold percentage for D:\local temp folder usage (default: 66%)
+            /// </summary>
+            public double WarningThresholdPercentage { get; set; } = 66.0;
+
+            /// <summary>
+            /// Error threshold percentage for D:\local temp folder usage (default: 90%)
+            /// </summary>
+            public double ErrorThresholdPercentage { get; set; } = 90.0;
         }
     }
 }

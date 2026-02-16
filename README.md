@@ -5,6 +5,9 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/actions/workflows/ci.yml">
+    <img src="https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
   <a href="https://www.nuget.org/packages/Umbraco.Community.Cloud.HealthChecks">
     <img src="https://img.shields.io/nuget/v/Umbraco.Community.Cloud.HealthChecks.svg" alt="NuGet Version">
   </a>
@@ -13,6 +16,8 @@
 A package that provides health checks for Umbraco Cloud environments, helping you monitor critical system resources and storage usage.
 
 > For full package documentation including features, installation, usage, and configuration, see the [Package README](src/Umbraco.Community.Cloud.HealthChecks/README.md).
+
+> For cleanup scripts to address health check warnings, see the [Cleanup Scripts README](scripts/README.md).
 
 ![Health Check Results](example.png)
 

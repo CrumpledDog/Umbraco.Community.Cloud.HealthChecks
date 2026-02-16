@@ -1,4 +1,4 @@
 <Solution>
   <Project Path="src/Umbraco.Community.Cloud.HealthChecks/Umbraco.Community.Cloud.HealthChecks.csproj" />
-  <Project Path="src/Umbraco.Community.Forms.OnTheTurn.TestSite/Umbraco.Community.Forms.OnTheTurn.TestSite.csproj" Id="e0ac10e4-0fdd-4624-b507-6f3302b77e83" />
+  <Project Path="src/Umbraco.Community.Cloud.HealthChecks.TestSite/Umbraco.Community.Cloud.HealthChecks.TestSite.csproj" Id="e0ac10e4-0fdd-4624-b507-6f3302b77e83" />
 </Solution>
