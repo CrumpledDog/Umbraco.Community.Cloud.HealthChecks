@@ -161,14 +161,17 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
 
                 // Build final message
+                var cleanupUrl = GetCleanupScriptUrl();
+                
                 if (warnings.Any())
                 {
-                    message += " - " + string.Join(". ", warnings) + ". Consider cleaning up.";
-                    
-                    var cleanupUrl = GetCleanupScriptUrl();
                     if (!string.IsNullOrEmpty(cleanupUrl))
                     {
-                        message += $" Run cleanup script: {cleanupUrl}";
+                        message += " - " + string.Join(". ", warnings) + ". Follow the 'Read more' link for cleanup instructions.";
+                    }
+                    else
+                    {
+                        message += " - " + string.Join(". ", warnings) + ". Consider cleaning up.";
                     }
                 }
                 else
@@ -176,11 +179,19 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     message += " - Within normal limits.";
                 }
 
-                results.Add(new HealthCheckStatus(message)
+                var status = new HealthCheckStatus(message)
                 {
                     ResultType = resultType,
                     Description = $"Path: {folderPath}"
-                });
+                };
+
+                // Add cleanup script link as a "Read more" button if available
+                if (!string.IsNullOrEmpty(cleanupUrl))
+                {
+                    status.ReadMoreLink = cleanupUrl;
+                }
+
+                results.Add(status);
             }
             catch (UnauthorizedAccessException ex)
             {
