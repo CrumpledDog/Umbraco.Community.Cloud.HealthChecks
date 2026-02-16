@@ -6,6 +6,17 @@ param(
     [int]$DaysToKeep = 30
 )
 
+# Safe output function for Kudu console compatibility
+function Write-Message {
+    param([string]$Message)
+    try {
+        Write-Host $Message
+    } catch {
+        # Fall back to Write-Output if Write-Host fails (common in Kudu)
+        Write-Output $Message
+    }
+}
+
 # Determine the logs path
 if ($env:HOME) {
     # Running in Azure/Kudu with HOME environment variable set
@@ -23,7 +34,7 @@ if ($env:HOME) {
 
 if (-not (Test-Path $logsPath)) {
     Write-Warning "Logs folder not found at: $logsPath"
-    Write-Output "Tip: Run this from your Umbraco site root or in Azure Kudu"
+    Write-Message "Tip: Run this from your Umbraco site root or in Azure Kudu"
     exit 1
 }
 
@@ -31,12 +42,12 @@ $cutoffDate = (Get-Date).AddDays(-$DaysToKeep)
 $files = Get-ChildItem -Path $logsPath -File -Recurse | Where-Object { $_.LastWriteTime -lt $cutoffDate }
 
 if ($files.Count -eq 0) {
-    Write-Output "No log files older than $DaysToKeep days found."
+    Write-Message "No log files older than $DaysToKeep days found."
     exit 0
 }
 
 $totalSize = ($files | Measure-Object -Property Length -Sum).Sum / 1MB
-Write-Output "Found $($files.Count) log files older than $DaysToKeep days (Total: $($totalSize.ToString('F2')) MB)"
+Write-Message "Found $($files.Count) log files older than $DaysToKeep days (Total: $($totalSize.ToString('F2')) MB)"
 
 $files | Remove-Item -Force
-Write-Output "Successfully removed $($files.Count) old log files."
+Write-Message "Successfully removed $($files.Count) old log files."

@@ -1,6 +1,17 @@
 # Clear NuGet cache folders
 # Usage: .\Clear-NuGetCache.ps1
 
+# Safe output function for Kudu console compatibility
+function Write-Message {
+    param([string]$Message)
+    try {
+        Write-Host $Message
+    } catch {
+        # Fall back to Write-Output if Write-Host fails (common in Kudu)
+        Write-Output $Message
+    }
+}
+
 # Determine the NuGet cache path
 if ($env:NUGET_PACKAGES) {
     # Use the official NuGet packages environment variable
@@ -18,14 +29,14 @@ if ($env:NUGET_PACKAGES) {
 
 if (-not (Test-Path $nugetPath)) {
     Write-Warning "NuGet cache folder not found at: $nugetPath"
-    Write-Output "Tip: Set the NUGET_PACKAGES environment variable to specify the cache location"
+    Write-Message "Tip: Set the NUGET_PACKAGES environment variable to specify the cache location"
     exit 1
 }
 
 $sizeBeforeMB = (Get-ChildItem -Path $nugetPath -Recurse -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1MB
 
-Write-Output "Clearing NuGet cache at: $nugetPath"
-Write-Output "Current size: $($sizeBeforeMB.ToString('F2')) MB"
+Write-Message "Clearing NuGet cache at: $nugetPath"
+Write-Message "Current size: $($sizeBeforeMB.ToString('F2')) MB"
 
 # Use dotnet CLI to clear the cache properly
 dotnet nuget locals all --clear
@@ -36,4 +47,4 @@ if (Test-Path $nugetPath) {
 }
 
 $freedMB = $sizeBeforeMB - $sizeAfterMB
-Write-Output "Successfully cleared cache. Freed: $($freedMB.ToString('F2')) MB"
+Write-Message "Successfully cleared cache. Freed: $($freedMB.ToString('F2')) MB)"
