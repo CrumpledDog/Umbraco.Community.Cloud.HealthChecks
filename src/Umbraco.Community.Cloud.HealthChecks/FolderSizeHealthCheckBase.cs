@@ -53,6 +53,14 @@ namespace Umbraco.Community.Cloud.HealthChecks
             return string.Empty;
         }
 
+        /// <summary>
+        /// Gets the URL to a cleanup script for this health check
+        /// </summary>
+        protected virtual string? GetCleanupScriptUrl()
+        {
+            return null;
+        }
+
         public override HealthCheckStatus ExecuteAction(HealthCheckAction action)
         {
             throw new InvalidOperationException($"{GetType().Name} has no actions");
@@ -156,6 +164,12 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 if (warnings.Any())
                 {
                     message += " - " + string.Join(". ", warnings) + ". Consider cleaning up.";
+                    
+                    var cleanupUrl = GetCleanupScriptUrl();
+                    if (!string.IsNullOrEmpty(cleanupUrl))
+                    {
+                        message += $" Run cleanup script: {cleanupUrl}";
+                    }
                 }
                 else
                 {
