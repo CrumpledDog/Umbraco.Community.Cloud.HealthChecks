@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Umbraco.Cms.Core.Composing;
 using Umbraco.Cms.Core.DependencyInjection;
+using Umbraco.Cms.Infrastructure.BackgroundJobs;
+using Umbraco.Extensions;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -13,6 +15,13 @@ namespace Umbraco.Community.Cloud.HealthChecks
         {
             builder.Services.Configure<CloudHealthChecksOptions>(
                 builder.Config.GetSection(CloudHealthChecksOptions.SectionName));
+
+            // Register folder size health checks so background job can find them
+            builder.Services.AddSingleton<FolderSizeHealthCheckBase, NuGetCacheSizeHealthCheck>();
+            builder.Services.AddSingleton<FolderSizeHealthCheckBase, UmbracoLogsFolderSizeHealthCheck>();
+
+            // Register the distributed background job - runs only on elected SchedulingPublisher
+            builder.Services.AddSingleton<IDistributedBackgroundJob, FolderSizeBackgroundJob>();
         }
     }
 }

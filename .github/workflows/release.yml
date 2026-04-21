@@ -82,7 +82,7 @@ jobs:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
     - name: Setup Node.js environment
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: 'lts/*'
         cache: 'npm'
@@ -94,7 +94,7 @@ jobs:
 
     - name: Cache NuGet
       id: nuget-packages
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
         key: nuget-cache-${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj*') }}
@@ -130,7 +130,7 @@ jobs:
     
     - name: Create GitHub Release
       if: ${{ needs.setup.outputs.new_release_published == 'true' }}
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         tag_name: v${{ needs.setup.outputs.semver }}
         name: v${{ needs.setup.outputs.semver }}

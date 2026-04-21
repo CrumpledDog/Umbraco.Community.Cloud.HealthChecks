@@ -1,3 +1,6 @@
+using System.Text.Json;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
 
 namespace Umbraco.Community.Cloud.HealthChecks
@@ -7,10 +10,20 @@ namespace Umbraco.Community.Cloud.HealthChecks
     /// </summary>
     public abstract class FolderSizeHealthCheckBase : HealthCheck
     {
+        private readonly IDistributedCache _distributedCache;
+        private readonly CloudHealthChecksOptions _options;
+
+        protected FolderSizeHealthCheckBase(
+            IDistributedCache distributedCache,
+            IOptions<CloudHealthChecksOptions> options)
+        {
+            _distributedCache = distributedCache;
+            _options = options.Value;
+        }
         /// <summary>
         /// Gets the path to the folder to check
         /// </summary>
-        protected abstract string FolderPath { get; }
+        public abstract string FolderPath { get; }
 
         /// <summary>
         /// Gets the warning threshold in MB
@@ -40,7 +53,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
         /// <summary>
         /// Determines if this check should only run in specific environments
         /// </summary>
-        protected virtual bool ShouldRunCheck()
+        public virtual bool ShouldRunCheck()
         {
             return true;
         }
@@ -66,7 +79,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
             throw new InvalidOperationException($"{GetType().Name} has no actions");
         }
 
-        public override Task<IEnumerable<HealthCheckStatus>> GetStatusAsync()
+        public override async Task<IEnumerable<HealthCheckStatus>> GetStatusAsync()
         {
             var results = new List<HealthCheckStatus>();
 
@@ -77,7 +90,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 {
                     ResultType = StatusResultType.Info
                 });
-                return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
+                return results;
             }
 
             try
@@ -92,11 +105,81 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     {
                         ResultType = StatusResultType.Info
                     });
-                    return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
+                    return results;
                 }
 
-                // Calculate folder size, file count, and oldest file in a single pass
-                var (sizeInBytes, fileCount, oldestFile) = GetDirectoryInfo(folderPath);
+                // Try to get cached result first if background scanning is enabled
+                FolderSizeResult? cachedResult = null;
+                if (_options.BackgroundScan.Enabled)
+                {
+                    var cacheKey = FolderSizeBackgroundJob.GetCacheKey(GetType().Name);
+                    var bytes = await _distributedCache.GetAsync(cacheKey);
+                    if (bytes != null && bytes.Length > 0)
+                    {
+                        var json = System.Text.Encoding.UTF8.GetString(bytes);
+                        cachedResult = JsonSerializer.Deserialize<FolderSizeResult>(json);
+                    }
+                }
+
+                long sizeInBytes;
+                int fileCount;
+                DateTime? oldestFileLastWriteTime;
+                DateTime calculatedAt;
+                bool isFromCache = false;
+
+                if (cachedResult != null)
+                {
+                    // Use cached result
+                    if (!cachedResult.Success)
+                    {
+                        results.Add(new HealthCheckStatus(
+                            $"Error checking {FolderDisplayName}: {cachedResult.ErrorMessage} (cached result from {cachedResult.CalculatedAt:u})")
+                        {
+                            ResultType = StatusResultType.Error
+                        });
+                        return results;
+                    }
+
+                    sizeInBytes = cachedResult.SizeInBytes;
+                    fileCount = cachedResult.FileCount;
+                    oldestFileLastWriteTime = cachedResult.OldestFileLastWriteTime;
+                    calculatedAt = cachedResult.CalculatedAt;
+                    isFromCache = true;
+                }
+                else
+                {
+                    // Fall back to live scan if no cached result
+                    var (size, count, oldestFile) = GetDirectoryInfo(folderPath);
+                    sizeInBytes = size;
+                    fileCount = count;
+                    oldestFileLastWriteTime = oldestFile?.LastWriteTime;
+                    calculatedAt = DateTime.UtcNow;
+
+                    // Cache the live scan result for 30 minutes to help other instances
+                    if (_options.BackgroundScan.Enabled)
+                    {
+                        var liveScanResult = new FolderSizeResult
+                        {
+                            SizeInBytes = sizeInBytes,
+                            FileCount = fileCount,
+                            OldestFileLastWriteTime = oldestFileLastWriteTime,
+                            CalculatedAt = calculatedAt
+                        };
+
+                        var cacheKey = FolderSizeBackgroundJob.GetCacheKey(GetType().Name);
+                        var json = JsonSerializer.Serialize(liveScanResult);
+                        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+
+                        await _distributedCache.SetAsync(
+                            cacheKey,
+                            bytes,
+                            new DistributedCacheEntryOptions
+                            {
+                                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30)
+                            });
+                    }
+                }
+
                 var sizeInMb = sizeInBytes / (1024.0 * 1024.0);
                 var sizeInGb = sizeInBytes / (1024.0 * 1024.0 * 1024.0);
 
@@ -104,15 +187,24 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     ? $"{sizeInGb:F2} GB"
                     : $"{sizeInMb:F2} MB";
 
-                var message = $"{FolderDisplayName} size: {sizeDisplay} ({fileCount:N0} files)";
+                var calculatedAgo = DateTime.UtcNow - calculatedAt;
+                var ageDisplay = calculatedAgo.TotalMinutes < 1
+                    ? "just now"
+                    : calculatedAgo.TotalHours < 1
+                        ? $"{calculatedAgo.TotalMinutes:F0} minutes ago"
+                        : calculatedAgo.TotalDays < 1
+                            ? $"{calculatedAgo.TotalHours:F0} hours ago"
+                            : $"{calculatedAgo.TotalDays:F0} days ago";
+
+                var message = $"{FolderDisplayName} size: {sizeDisplay} ({fileCount:N0} files) - calculated {ageDisplay}";
 
                 // Only check file age if thresholds are configured
                 double oldestFileAge = 0;
                 if (FileAgeWarningThresholdDays > 0 || FileAgeErrorThresholdDays > 0)
                 {
-                    oldestFileAge = oldestFile != null ? (DateTime.Now - oldestFile.LastWriteTime).TotalDays : 0;
+                    oldestFileAge = oldestFileLastWriteTime != null ? (DateTime.Now - oldestFileLastWriteTime.Value).TotalDays : 0;
 
-                    if (oldestFile != null)
+                    if (oldestFileLastWriteTime != null)
                     {
                         message += $". Oldest file: {oldestFileAge:F0} days old";
                     }
@@ -128,7 +220,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 // Determine status based on thresholds
                 StatusResultType resultType;
                 var warnings = new List<string>();
-                
+
                 // Check size thresholds
                 if (sizeInMb >= ErrorThresholdMb)
                 {
@@ -162,7 +254,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
 
                 // Build final message
                 var cleanupUrl = GetCleanupScriptUrl();
-                
+
                 if (warnings.Any())
                 {
                     if (!string.IsNullOrEmpty(cleanupUrl))
@@ -179,10 +271,21 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     message += " - Within normal limits.";
                 }
 
+                var description = $"Path: {folderPath}";
+                description += $"\nCalculated at: {calculatedAt.ToLocalTime():g}";
+                if (isFromCache)
+                {
+                    description += " (from cache)";
+                }
+                else
+                {
+                    description += " (live scan - cached for 30 minutes)";
+                }
+
                 var status = new HealthCheckStatus(message)
                 {
                     ResultType = resultType,
-                    Description = $"Path: {folderPath}"
+                    Description = description
                 };
 
                 // Add cleanup script link as a "Read more" button if available
@@ -210,7 +313,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 });
             }
 
-            return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
+            return results;
         }
 
         /// <summary>
@@ -248,6 +351,11 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     catch (UnauthorizedAccessException)
                     {
                         // Skip individual files we can't access
+                        continue;
+                    }
+                    catch (FileNotFoundException)
+                    {
+                        // File was deleted during enumeration
                         continue;
                     }
                 }

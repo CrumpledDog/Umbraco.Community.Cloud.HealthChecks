@@ -17,6 +17,11 @@ namespace Umbraco.Community.Cloud.HealthChecks
         public bool LocalTestMode { get; set; } = false;
 
         /// <summary>
+        /// Options for background folder size scanning
+        /// </summary>
+        public BackgroundScanOptions BackgroundScan { get; set; } = new();
+
+        /// <summary>
         /// Options for Azure Storage health check
         /// </summary>
         public AzureStorageOptions AzureStorage { get; set; } = new();
@@ -35,6 +40,25 @@ namespace Umbraco.Community.Cloud.HealthChecks
         /// Options for Local Temp folder health check
         /// </summary>
         public LocalTempOptions LocalTemp { get; set; } = new();
+
+        public class BackgroundScanOptions
+        {
+            /// <summary>
+            /// Enable background folder size scanning (default: true)
+            /// </summary>
+            public bool Enabled { get; set; } = true;
+
+            /// <summary>
+            /// How often to scan folders in hours (default: 6 hours)
+            /// </summary>
+            public double ScanIntervalHours { get; set; } = 6.0;
+
+            /// <summary>
+            /// How long to cache results in hours (default: 30 days / 720 hours)
+            /// Acts as a safety net if background scanning is disabled
+            /// </summary>
+            public double CacheExpirationHours { get; set; } = 720.0;
+        }
 
         public class AzureStorageOptions
         {
