@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
 
@@ -13,12 +14,15 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private const string NuGetCachePath = @"C:\home\.nuget";
         private readonly CloudHealthChecksOptions _options;
 
-        public NuGetCacheSizeHealthCheck(IOptions<CloudHealthChecksOptions> options)
+        public NuGetCacheSizeHealthCheck(
+            IDistributedCache distributedCache,
+            IOptions<CloudHealthChecksOptions> options)
+            : base(distributedCache, options)
         {
             _options = options.Value;
         }
 
-        protected override string FolderPath =>
+        public override string FolderPath =>
             _options.LocalTestMode
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages")
                 : NuGetCachePath;
@@ -30,7 +34,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
         protected override string FolderDisplayName =>
             _options.LocalTestMode ? "NuGet cache (test mode)" : "NuGet cache";
 
-        protected override bool ShouldRunCheck()
+        public override bool ShouldRunCheck()
         {
             // In test mode, always run. Otherwise only run if we're in Azure (C:\home exists)
             return _options.LocalTestMode || Directory.Exists(@"C:\home");

@@ -76,13 +76,13 @@ namespace Umbraco.Community.Cloud.HealthChecks
 
                 homeDir = HomeDirectory;
                 localDir = LocalDirectory;
-                
+
                 // Get TEMP and strip \Temp suffix if present (e.g., C:\local\Temp -> C:\local)
                 var tempPath = Environment.GetEnvironmentVariable("TEMP") ?? LocalTempDirectory;
-                localTempDir = tempPath.EndsWith(@"\Temp", StringComparison.OrdinalIgnoreCase) 
+                localTempDir = tempPath.EndsWith(@"\Temp", StringComparison.OrdinalIgnoreCase)
                     ? Directory.GetParent(tempPath)?.FullName ?? tempPath
                     : tempPath;
-                
+
                 homeDisplayName = "C:\\home";
                 localDisplayName = "C:\\local";
                 localTempDisplayName = localTempDir;
@@ -127,7 +127,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
 
                 // Get actual disk space using Windows API (same as Kudu)
                 GetDiskFreeSpace(directory, out ulong freeBytes, out ulong totalBytes);
-                
+
                 var totalMb = totalBytes / (1024.0 * 1024.0);
                 var freeMb = freeBytes / (1024.0 * 1024.0);
                 var usedMb = totalMb - freeMb;
