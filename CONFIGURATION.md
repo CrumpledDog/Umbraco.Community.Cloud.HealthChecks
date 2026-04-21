@@ -11,7 +11,7 @@ You can configure the thresholds for each health check in your `appsettings.json
     "BackgroundScan": {
       "Enabled": true,
       "ScanIntervalHours": 6.0,
-      "CacheExpirationHours": 12.0
+      "CacheExpirationHours": 720.0
     },
     "AzureStorage": {
       "WarningThresholdPercentage": 75.0,
@@ -52,8 +52,8 @@ You can configure the thresholds for each health check in your `appsettings.json
 - **ScanIntervalHours** (default: `6.0`)  
   How often to scan folders in hours. The background job runs on the elected SchedulingPublisher server in load-balanced environments.
 
-- **CacheExpirationHours** (default: `12.0`)  
-  How long to cache scan results in hours. Results are stored in distributed cache and shared across all servers.
+- **CacheExpirationHours** (default: `720.0`)  
+  How long to cache scan results in hours (30 days). Acts as a safety net if background scanning is disabled. Since the background job updates the cache regularly, expiration is set to a very long duration to prevent expensive live scans.
 
 **How it works:**
 - In single-server environments, the job runs on that server
@@ -119,7 +119,7 @@ To test the background scanning feature locally with faster intervals, add to `a
     "BackgroundScan": {
       "Enabled": true,
       "ScanIntervalHours": 0.083,
-      "CacheExpirationHours": 1.0
+      "CacheExpirationHours": 24.0
     }
   }
 }
@@ -127,7 +127,7 @@ To test the background scanning feature locally with faster intervals, add to `a
 
 This configuration:
 - Scans folders every **5 minutes** (0.083 hours) instead of 6 hours
-- Caches results for 1 hour instead of 12 hours
+- Caches results for 24 hours instead of 30 days
 - Enables local test mode to scan local folders
 
 **Note**: The first background scan occurs after the `ScanIntervalHours` period (not immediately on startup). After that, scans repeat at the configured interval. You can watch for log messages:

@@ -72,7 +72,7 @@ Quick example:
     "BackgroundScan": {
       "Enabled": true,
       "ScanIntervalHours": 6.0,
-      "CacheExpirationHours": 12.0
+      "CacheExpirationHours": 720.0
     },
     "UmbracoLogs": {
       "WarningThresholdMb": 200,
@@ -86,7 +86,7 @@ Quick example:
 
 - **Enabled** (default: `true`) - Enable/disable background scanning
 - **ScanIntervalHours** (default: `6.0`) - How often to scan folders (in hours)
-- **CacheExpirationHours** (default: `12.0`) - How long to cache results (in hours)
+- **CacheExpirationHours** (default: `720.0`) - How long to cache results (in hours / 30 days)
 
 **Note**: In load-balanced environments, the background job runs only on the elected SchedulingPublisher server using distributed locking to ensure only one scan occurs. All servers read from the shared distributed cache.
 

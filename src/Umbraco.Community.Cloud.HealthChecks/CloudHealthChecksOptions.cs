@@ -54,9 +54,10 @@ namespace Umbraco.Community.Cloud.HealthChecks
             public double ScanIntervalHours { get; set; } = 6.0;
 
             /// <summary>
-            /// How long to cache results in hours (default: 12 hours)
+            /// How long to cache results in hours (default: 30 days / 720 hours)
+            /// Acts as a safety net if background scanning is disabled
             /// </summary>
-            public double CacheExpirationHours { get; set; } = 12.0;
+            public double CacheExpirationHours { get; set; } = 720.0;
         }
 
         public class AzureStorageOptions
