@@ -6,16 +6,33 @@ A package that provides health checks for Umbraco Cloud environments, helping yo
 
 ## Features
 
+### Background Scanning
+
+To prevent timeouts and performance issues, folder size health checks use a **background scanning** strategy:
+
+- **Scheduled Scans**: Folders are scanned every 6 hours by default (configurable)
+- **Distributed Cache**: Results are cached and shared across all servers in load-balanced environments
+- **No Timeouts**: Health checks return instantly using cached data
+- **Live Fallback**: If cache expires, a live scan is performed and cached for 30 minutes
+- **Timestamp Display**: Shows "calculated X ago" so you know data freshness
+
+This approach is especially valuable for large folders (NuGet cache, logs) where scanning can take several seconds or minutes.
+
 ### Included Health Checks
 
 - **Azure Storage Usage** - Monitors storage usage for `C:\home` and `C:\local` directories in Umbraco Cloud
   - Warning threshold at 75% usage
   - Error threshold at 90% usage
   - Windows-only support
+  - Uses Windows API for instant results (no scanning required)
 
 - **NuGet Cache Size** - Monitors the size of the NuGet cache directory
+  - Uses background scanning with distributed cache
+  - Displays calculation timestamp
   
 - **Umbraco Logs Folder Size** - Tracks the size of Umbraco log files
+  - Uses background scanning with distributed cache
+  - Displays calculation timestamp
 
 ## Installation
 
@@ -43,7 +60,7 @@ The health checks are grouped under **"Umbraco Cloud"** for easy identification.
 
 ## Configuration
 
-All health check thresholds can be customized via `appsettings.json`. The package uses sensible defaults, but you can override them to suit your environment.
+All health check settings can be customized via `appsettings.json`. The package uses sensible defaults, but you can override them to suit your environment.
 
 See the [Configuration Guide](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/blob/develop/v1/CONFIGURATION.md) for detailed configuration options and examples.
 
@@ -52,6 +69,11 @@ Quick example:
 ```json
 {
   "CloudHealthChecks": {
+    "BackgroundScan": {
+      "Enabled": true,
+      "ScanIntervalHours": 6.0,
+      "CacheExpirationHours": 720.0
+    },
     "UmbracoLogs": {
       "WarningThresholdMb": 200,
       "ErrorThresholdMb": 1000
@@ -59,6 +81,14 @@ Quick example:
   }
 }
 ```
+
+### Background Scan Configuration
+
+- **Enabled** (default: `true`) - Enable/disable background scanning
+- **ScanIntervalHours** (default: `6.0`) - How often to scan folders (in hours)
+- **CacheExpirationHours** (default: `720.0`) - How long to cache results (in hours / 30 days)
+
+**Note**: In load-balanced environments, the background job runs only on the elected SchedulingPublisher server using distributed locking to ensure only one scan occurs. All servers read from the shared distributed cache.
 
 ## Requirements
 
