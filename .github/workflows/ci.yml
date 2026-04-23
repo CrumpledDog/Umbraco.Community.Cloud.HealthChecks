@@ -123,6 +123,9 @@ jobs:
     - name: Build slnx
       run: dotnet build ${{ github.workspace }}/*.slnx -c Release /maxcpucount:1
 
+    - name: Verify Code Formatting
+      run: dotnet format ${{ github.workspace }}/*.slnx --verify-no-changes --verbosity diagnostic
+
     - name: Pack NuGet Package
       working-directory: ${{ env.PATH_TO_EXTENSION }}
       run: dotnet pack --configuration Release /p:PackageVersion=${{ needs.setup.outputs.semver }} /p:FileVersion=${{ steps.update-version.outputs.file-version }}
