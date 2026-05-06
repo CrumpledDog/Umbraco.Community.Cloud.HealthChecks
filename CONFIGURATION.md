@@ -11,7 +11,8 @@ You can configure the thresholds for each health check in your `appsettings.json
     "BackgroundScan": {
       "Enabled": true,
       "ScanIntervalHours": 6.0,
-      "CacheExpirationHours": 720.0
+      "CacheExpirationHours": 720.0,
+      "StorageMode": "KeyValue"
     },
     "AzureStorage": {
       "WarningThresholdPercentage": 75.0,
@@ -55,10 +56,15 @@ You can configure the thresholds for each health check in your `appsettings.json
 - **CacheExpirationHours** (default: `720.0`)  
   How long to cache scan results in hours (30 days). Acts as a safety net if background scanning is disabled. Since the background job updates the cache regularly, expiration is set to a very long duration to prevent expensive live scans.
 
+- **StorageMode** (default: `"KeyValue"`)  
+  Storage mode for health check results. Options:
+  - `"KeyValue"` - Uses Umbraco's KeyValue database table for persistent storage. Suitable for deployments without a distributed cache provider. Data persists across application restarts.
+  - `"DistributedCache"` - Uses IDistributedCache (in-memory or Redis) for storing health check results. Suitable for deployments with a configured distributed cache provider.
+
 **How it works:**
 - In single-server environments, the job runs on that server
 - In load-balanced environments, only the elected SchedulingPublisher server runs the scan
-- All servers read from the shared distributed cache for instant results
+- All servers read from the configured storage (KeyValue database or distributed cache) for instant results
 - If cache expires before the next scan, a live scan is performed and cached for 30 minutes
 - Health checks display "calculated X ago" timestamps showing data freshness
 
@@ -135,4 +141,42 @@ This configuration:
 Starting folder size background scan for {Count} health checks
 Scanning folder for {HealthCheck}: {Path}
 Cached folder size for {HealthCheck}: {Size} bytes, {Files} files
+```
+
+### Storage Modes
+
+The package supports two storage modes for health check results. By default, **KeyValue mode** is used, which stores results in Umbraco's database KeyValue table. This works out-of-the-box without requiring a distributed cache provider.
+
+For deployments without a distributed cache provider (e.g., single-server environments without Redis), use KeyValue storage mode (the default):
+
+```json
+{
+  "CloudHealthChecks": {
+    "BackgroundScan": {
+      "StorageMode": "KeyValue"
+    }
+  }
+}
+```
+
+**Benefits of KeyValue mode (default):**
+- No distributed cache provider required
+- Results persist across application restarts
+- Suitable for single-server or development environments
+- Works out-of-the-box without additional configuration
+
+**When to use DistributedCache mode:**
+- Load-balanced environments with Redis or similar cache
+- When you want automatic cache expiration
+- For high-performance scenarios with frequent reads
+
+**Example for DistributedCache mode:**
+```json
+{
+  "CloudHealthChecks": {
+    "BackgroundScan": {
+      "StorageMode": "DistributedCache"
+    }
+  }
+}
 ```
