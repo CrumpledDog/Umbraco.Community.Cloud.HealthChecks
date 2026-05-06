@@ -273,6 +273,82 @@ jobs:
         echo "Updated .releaserc:"
         cat .releaserc
 
+    - name: Generate Release Notes Body
+      if: ${{ github.event.inputs.create_github_release != 'false' }}
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        BRANCH_NAME="${{ github.ref_name }}"
+        
+        # Check if this is a feature or hotfix branch test release
+        if [[ "$BRANCH_NAME" == hotfix/* ]] || [[ "$BRANCH_NAME" == feature/* ]]; then
+          echo "## ⚠️ Test Release from \`$BRANCH_NAME\`" > release_body.md
+          echo "" >> release_body.md
+          echo "This is a test release for development and testing purposes only." >> release_body.md
+          echo "" >> release_body.md
+          echo "### Installation" >> release_body.md
+          echo "" >> release_body.md
+          cat << 'EOF' >> release_body.md
+        ```bash
+        dotnet add package Umbraco.Community.Cloud.HealthChecks --version ${{ needs.setup.outputs.semver }} --source https://nuget.pkg.github.com/CrumpledDog/index.json
+        ```
+        EOF
+        # Check if publishing to nuget.org (for stable releases)
+        elif [[ "${{ github.event.inputs.publish_to_nuget }}" == "true" && "${{ needs.setup.outputs.semver }}" != *"-"* ]]; then
+          cat << 'EOF' > release_body.md
+        ## Installation
+        
+        ```bash
+        dotnet add package Umbraco.Community.Cloud.HealthChecks --version ${{ needs.setup.outputs.semver }}
+        ```
+        EOF
+          
+          # Find the previous nuget.org release tag using git tags directly
+          echo "" >> release_body.md
+          echo "---" >> release_body.md
+          echo "" >> release_body.md
+          
+          # Get the previous stable tag (these are the ones published to nuget.org)
+          CURRENT_TAG="v${{ needs.setup.outputs.semver }}"
+          LAST_NUGET_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${CURRENT_TAG}$" | head -n1)
+          
+          if [[ -n "$LAST_NUGET_TAG" ]]; then
+            echo "## What's Changed (since $LAST_NUGET_TAG)" >> release_body.md
+            echo "" >> release_body.md
+            # Get GitHub-generated notes and strip the "## What's Changed" header
+            gh api repos/${{ github.repository }}/releases/generate-notes -F tag_name="v${{ needs.setup.outputs.semver }}" -F previous_tag_name="$LAST_NUGET_TAG" --jq .body | sed '/^## What'"'"'s Changed$/d' >> release_body.md
+          else
+            echo "## What's Changed" >> release_body.md
+            echo "" >> release_body.md
+            # Get GitHub-generated notes and strip the "## What's Changed" header
+            gh api repos/${{ github.repository }}/releases/generate-notes -F tag_name="v${{ needs.setup.outputs.semver }}" --jq .body | sed '/^## What'"'"'s Changed$/d' >> release_body.md
+          fi
+        else
+          # Not publishing to nuget.org - show alternative sources
+          echo "## Installation" > release_body.md
+          echo "" >> release_body.md
+          
+          cat << 'EOF' >> release_body.md
+        ### From GitHub Packages (pre-release)
+        
+        ```bash
+        dotnet add package Umbraco.Community.Cloud.HealthChecks --version ${{ needs.setup.outputs.semver }} --source https://nuget.pkg.github.com/CrumpledDog/index.json
+        ```
+        EOF
+          
+          # Add MyGet section if API key is available
+          if [[ -n "${{ secrets.MYGET_API_KEY }}" ]]; then
+            cat << 'EOF' >> release_body.md
+        
+        ### From MyGet (pre-release)
+        
+        ```bash
+        dotnet add package Umbraco.Community.Cloud.HealthChecks --version ${{ needs.setup.outputs.semver }} --source https://www.myget.org/F/umbraco-packages/api/v3/index.json
+        ```
+        EOF
+          fi
+        fi
+
     - name: Semantic Release
       uses: cycjimmy/semantic-release-action@v6
       env:
@@ -283,10 +359,27 @@ jobs:
           @semantic-release/exec
           @semantic-release/commit-analyzer
           @semantic-release/release-notes-generator
-          @semantic-release/github
           conventional-changelog-conventionalcommits
+
+    - name: Update GitHub Release with Custom Notes
+      if: ${{ github.event.inputs.create_github_release != 'false' }}
+      uses: softprops/action-gh-release@v3
+      with:
+        tag_name: v${{ needs.setup.outputs.semver }}
+        name: v${{ needs.setup.outputs.semver }}
+        body_path: release_body.md
+        prerelease: ${{ contains(needs.setup.outputs.semver, '-') }}
     
     - name: Merge release branch to develop
       if: startsWith(github.ref, 'refs/heads/release/')
       run: .github/scripts/merge-to-develop.sh "${{ needs.setup.outputs.semver }}"
+    
+    - name: Write Summary
+      run: |
+        echo "## 🚀 Release Published: v${{ needs.setup.outputs.semver }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Branch:** \`${GITHUB_REF#refs/heads/}\`" >> $GITHUB_STEP_SUMMARY
+        echo "**Tag:** \`v${{ needs.setup.outputs.semver }}\`" >> $GITHUB_STEP_SUMMARY
+        if [[ "${{ github.event.inputs.create_github_release }}" == "false" ]]; then
+          echo "**Note:** GitHub Release creation was skipped (create_github_release=false)" >> $GITHUB_STEP_SUMMARY
+        fi
       
