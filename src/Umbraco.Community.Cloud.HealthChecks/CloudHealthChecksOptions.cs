@@ -58,6 +58,12 @@ namespace Umbraco.Community.Cloud.HealthChecks
             /// Acts as a safety net if background scanning is disabled
             /// </summary>
             public double CacheExpirationHours { get; set; } = 720.0;
+
+            /// <summary>
+            /// Storage mode for health check results (default: KeyValue)
+            /// Use DistributedCache for deployments with a distributed cache provider.
+            /// </summary>
+            public HealthCheckStorageMode StorageMode { get; set; } = HealthCheckStorageMode.KeyValue;
         }
 
         public class AzureStorageOptions
@@ -121,5 +127,21 @@ namespace Umbraco.Community.Cloud.HealthChecks
             /// </summary>
             public double ErrorThresholdPercentage { get; set; } = 90.0;
         }
+    }
+
+    /// <summary>
+    /// Storage mode for health check results
+    /// </summary>
+    public enum HealthCheckStorageMode
+    {
+        /// <summary>
+        /// Use IDistributedCache for storing health check results (in-memory or Redis)
+        /// </summary>
+        DistributedCache = 0,
+
+        /// <summary>
+        /// Use Umbraco KeyValue table for storing health check results (database)
+        /// </summary>
+        KeyValue = 1
     }
 }

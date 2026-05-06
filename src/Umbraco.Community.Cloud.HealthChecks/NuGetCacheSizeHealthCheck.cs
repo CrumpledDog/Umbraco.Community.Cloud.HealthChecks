@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
+using Umbraco.Community.Cloud.HealthChecks.Services;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -15,9 +16,9 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private readonly CloudHealthChecksOptions _options;
 
         public NuGetCacheSizeHealthCheck(
-            IDistributedCache distributedCache,
+            IHealthCheckResultStore store,
             IOptions<CloudHealthChecksOptions> options)
-            : base(distributedCache, options)
+            : base(store, options)
         {
             _options = options.Value;
         }
