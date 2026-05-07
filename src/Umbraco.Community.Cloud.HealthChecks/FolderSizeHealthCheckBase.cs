@@ -150,7 +150,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     oldestFileLastWriteTime = oldestFile?.LastWriteTime;
                     calculatedAt = DateTime.UtcNow;
 
-                    // Cache the live scan result for 30 minutes to help other instances
+                    // Store the live scan result to help other instances until the next background scan
                     if (_options.BackgroundScan.Enabled)
                     {
                         var liveScanResult = new FolderSizeResult
@@ -264,7 +264,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
                 else
                 {
-                    description += " (live scan - cached for 30 minutes)";
+                    description += " (live scan - persisted until next background scan)";
                 }
 
                 var status = new HealthCheckStatus(message)
