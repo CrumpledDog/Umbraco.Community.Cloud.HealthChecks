@@ -82,22 +82,24 @@ namespace Umbraco.Community.Cloud.HealthChecks
         public class NuGetCacheOptions
         {
             /// <summary>
-            /// Warning threshold in MB for NuGet cache size (default: 2560 MB / 2.5 GB)
+            /// Warning threshold in MB for NuGet cache size.
+            /// When null (default), automatically calculates as 75% of error threshold.
             /// </summary>
-            public long WarningThresholdMb { get; set; } = 2560;
+            public long? WarningThresholdMb { get; set; } = null;
 
             /// <summary>
-            /// Error threshold in MB for NuGet cache size (default: 3072 MB / 3 GB)
+            /// Error threshold in MB for NuGet cache size.
+            /// When null (default), automatically calculates as 50% of total home directory size (rounded to nearest GB).
             /// </summary>
-            public long ErrorThresholdMb { get; set; } = 3072;
+            public long? ErrorThresholdMb { get; set; } = null;
         }
 
         public class UmbracoLogsOptions
         {
             /// <summary>
-            /// Warning threshold in MB for logs folder size (default: 100 MB)
+            /// Warning threshold in MB for logs folder size (default: 250 MB)
             /// </summary>
-            public long WarningThresholdMb { get; set; } = 100;
+            public long WarningThresholdMb { get; set; } = 250;
 
             /// <summary>
             /// Error threshold in MB for logs folder size (default: 500 MB)

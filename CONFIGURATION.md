@@ -19,11 +19,11 @@ You can configure the thresholds for each health check in your `appsettings.json
       "ErrorThresholdPercentage": 90.0
     },
     "NuGetCache": {
-      "WarningThresholdMb": 2560,
-      "ErrorThresholdMb": 3072
+      "WarningThresholdMb": null,
+      "ErrorThresholdMb": null
     },
     "UmbracoLogs": {
-      "WarningThresholdMb": 100,
+      "WarningThresholdMb": 250,
       "ErrorThresholdMb": 500,
       "FileAgeWarningThresholdDays": 550,
       "FileAgeErrorThresholdDays": 730
@@ -78,15 +78,21 @@ You can configure the thresholds for each health check in your `appsettings.json
 
 ### NuGet Cache Health Check
 
-- **WarningThresholdMb** (default: `2560`)  
-  Warning threshold in MB for NuGet cache size (2.5 GB)
+- **WarningThresholdMb** (default: `null`)  
+  Warning threshold in MB for NuGet cache size.  
+  When `null` (default), automatically calculates as **75% of error threshold** (rounded to nearest GB).  
+  Example: If error threshold is 10 GB, warning threshold becomes 8 GB.
 
-- **ErrorThresholdMb** (default: `3072`)  
-  Error threshold in MB for NuGet cache size (3 GB)
+- **ErrorThresholdMb** (default: `null`)  
+  Error threshold in MB for NuGet cache size.  
+  When `null` (default), automatically calculates as **50% of total home directory size** (rounded to nearest GB).  
+  Example: If `C:\home` has 20 GB total capacity, error threshold becomes 10 GB.  
+  
+  **Intelligent Defaults:** These dynamic thresholds adapt to your Azure environment's actual storage capacity. In a load-balanced environment with 250 GB storage, you'd get ~125 GB error threshold instead of the old fixed 3 GB limit. You can still override with explicit values if needed.
 
 ### Umbraco Logs Health Check
 
-- **WarningThresholdMb** (default: `100`)  
+- **WarningThresholdMb** (default: `250`)  
   Warning threshold in MB for logs folder size
 
 - **ErrorThresholdMb** (default: `500`)  
@@ -142,6 +148,44 @@ Starting folder size background scan for {Count} health checks
 Scanning folder for {HealthCheck}: {Path}
 Cached folder size for {HealthCheck}: {Size} bytes, {Files} files
 ```
+
+### Overriding NuGet Cache Intelligent Defaults
+
+By default, NuGet cache thresholds are automatically calculated based on your `C:\home` directory size. To override with explicit values:
+
+```json
+{
+  "CloudHealthChecks": {
+    "NuGetCache": {
+      "WarningThresholdMb": 5120,
+      "ErrorThresholdMb": 8192
+    }
+  }
+}
+```
+
+This sets:
+- Warning threshold to 5 GB (5120 MB)
+- Error threshold to 8 GB (8192 MB)
+
+**When to override:**
+- You want more conservative thresholds than the automatic 50%/75% calculation
+- You have specific storage capacity constraints
+- You need consistent thresholds across different environments
+
+**Tip:** Set just the error threshold to use automatic calculation for warning (75% of error):
+
+```json
+{
+  "CloudHealthChecks": {
+    "NuGetCache": {
+      "ErrorThresholdMb": 10240
+    }
+  }
+}
+```
+
+This sets error to 10 GB and automatically calculates warning as ~8 GB.
 
 ### Storage Modes
 

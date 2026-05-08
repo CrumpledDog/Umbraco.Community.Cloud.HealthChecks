@@ -27,6 +27,7 @@ This approach is especially valuable for large folders (NuGet cache, logs) where
   - Uses Windows API for instant results (no scanning required)
 
 - **NuGet Cache Size** - Monitors the size of the NuGet cache directory
+  - **Intelligent defaults**: Automatically calculates thresholds based on total home directory size (50% for error, 75% of error for warning)
   - Uses background scanning with distributed cache
   - Displays calculation timestamp
   

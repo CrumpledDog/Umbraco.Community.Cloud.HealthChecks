@@ -253,7 +253,14 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
                 else
                 {
-                    message += " - Within normal limits.";
+                    // Show threshold details even when within normal limits
+                    var warningThresholdDisplay = WarningThresholdMb >= 1024
+                        ? $"{WarningThresholdMb / 1024.0:F1} GB"
+                        : $"{WarningThresholdMb} MB";
+                    var errorThresholdDisplay = ErrorThresholdMb >= 1024
+                        ? $"{ErrorThresholdMb / 1024.0:F1} GB"
+                        : $"{ErrorThresholdMb} MB";
+                    message += $" - Within normal limits (warning: {warningThresholdDisplay}, error: {errorThresholdDisplay}).";
                 }
 
                 var description = $"Path: {folderPath}";
