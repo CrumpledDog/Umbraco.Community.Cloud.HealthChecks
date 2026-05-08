@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
+using Umbraco.Community.Cloud.HealthChecks.Services;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -10,14 +11,14 @@ namespace Umbraco.Community.Cloud.HealthChecks
     /// </summary>
     public abstract class FolderSizeHealthCheckBase : HealthCheck
     {
-        private readonly IDistributedCache _distributedCache;
+        private readonly IHealthCheckResultStore _store;
         private readonly CloudHealthChecksOptions _options;
 
         protected FolderSizeHealthCheckBase(
-            IDistributedCache distributedCache,
+            IHealthCheckResultStore store,
             IOptions<CloudHealthChecksOptions> options)
         {
-            _distributedCache = distributedCache;
+            _store = store;
             _options = options.Value;
         }
         /// <summary>
@@ -112,13 +113,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 FolderSizeResult? cachedResult = null;
                 if (_options.BackgroundScan.Enabled)
                 {
-                    var cacheKey = FolderSizeBackgroundJob.GetCacheKey(GetType().Name);
-                    var bytes = await _distributedCache.GetAsync(cacheKey);
-                    if (bytes != null && bytes.Length > 0)
-                    {
-                        var json = System.Text.Encoding.UTF8.GetString(bytes);
-                        cachedResult = JsonSerializer.Deserialize<FolderSizeResult>(json);
-                    }
+                    cachedResult = await _store.GetAsync(GetType().Name);
                 }
 
                 long sizeInBytes;
@@ -155,7 +150,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     oldestFileLastWriteTime = oldestFile?.LastWriteTime;
                     calculatedAt = DateTime.UtcNow;
 
-                    // Cache the live scan result for 30 minutes to help other instances
+                    // Store the live scan result to help other instances until the next background scan
                     if (_options.BackgroundScan.Enabled)
                     {
                         var liveScanResult = new FolderSizeResult
@@ -166,17 +161,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                             CalculatedAt = calculatedAt
                         };
 
-                        var cacheKey = FolderSizeBackgroundJob.GetCacheKey(GetType().Name);
-                        var json = JsonSerializer.Serialize(liveScanResult);
-                        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
-
-                        await _distributedCache.SetAsync(
-                            cacheKey,
-                            bytes,
-                            new DistributedCacheEntryOptions
-                            {
-                                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30)
-                            });
+                        await _store.StoreAsync(GetType().Name, liveScanResult);
                     }
                 }
 
@@ -268,7 +253,14 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
                 else
                 {
-                    message += " - Within normal limits.";
+                    // Show threshold details even when within normal limits
+                    var warningThresholdDisplay = WarningThresholdMb >= 1024
+                        ? $"{WarningThresholdMb / 1024.0:F1} GB"
+                        : $"{WarningThresholdMb} MB";
+                    var errorThresholdDisplay = ErrorThresholdMb >= 1024
+                        ? $"{ErrorThresholdMb / 1024.0:F1} GB"
+                        : $"{ErrorThresholdMb} MB";
+                    message += $" - Within normal limits (warning: {warningThresholdDisplay}, error: {errorThresholdDisplay}).";
                 }
 
                 var description = $"Path: {folderPath}";
@@ -279,7 +271,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
                 else
                 {
-                    description += " (live scan - cached for 30 minutes)";
+                    description += " (live scan - persisted until next background scan)";
                 }
 
                 var status = new HealthCheckStatus(message)

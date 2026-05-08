@@ -58,6 +58,12 @@ namespace Umbraco.Community.Cloud.HealthChecks
             /// Acts as a safety net if background scanning is disabled
             /// </summary>
             public double CacheExpirationHours { get; set; } = 720.0;
+
+            /// <summary>
+            /// Storage mode for health check results (default: KeyValue)
+            /// Use DistributedCache for deployments with a distributed cache provider.
+            /// </summary>
+            public HealthCheckStorageMode StorageMode { get; set; } = HealthCheckStorageMode.KeyValue;
         }
 
         public class AzureStorageOptions
@@ -76,22 +82,24 @@ namespace Umbraco.Community.Cloud.HealthChecks
         public class NuGetCacheOptions
         {
             /// <summary>
-            /// Warning threshold in MB for NuGet cache size (default: 2560 MB / 2.5 GB)
+            /// Warning threshold in MB for NuGet cache size.
+            /// When null (default), automatically calculates as 75% of error threshold.
             /// </summary>
-            public long WarningThresholdMb { get; set; } = 2560;
+            public long? WarningThresholdMb { get; set; } = null;
 
             /// <summary>
-            /// Error threshold in MB for NuGet cache size (default: 3072 MB / 3 GB)
+            /// Error threshold in MB for NuGet cache size.
+            /// When null (default), automatically calculates as 50% of total home directory size (rounded to nearest GB).
             /// </summary>
-            public long ErrorThresholdMb { get; set; } = 3072;
+            public long? ErrorThresholdMb { get; set; } = null;
         }
 
         public class UmbracoLogsOptions
         {
             /// <summary>
-            /// Warning threshold in MB for logs folder size (default: 100 MB)
+            /// Warning threshold in MB for logs folder size (default: 250 MB)
             /// </summary>
-            public long WarningThresholdMb { get; set; } = 100;
+            public long WarningThresholdMb { get; set; } = 250;
 
             /// <summary>
             /// Error threshold in MB for logs folder size (default: 500 MB)
@@ -121,5 +129,21 @@ namespace Umbraco.Community.Cloud.HealthChecks
             /// </summary>
             public double ErrorThresholdPercentage { get; set; } = 90.0;
         }
+    }
+
+    /// <summary>
+    /// Storage mode for health check results
+    /// </summary>
+    public enum HealthCheckStorageMode
+    {
+        /// <summary>
+        /// Use IDistributedCache for storing health check results (in-memory or Redis)
+        /// </summary>
+        DistributedCache = 0,
+
+        /// <summary>
+        /// Use Umbraco KeyValue table for storing health check results (database)
+        /// </summary>
+        KeyValue = 1
     }
 }

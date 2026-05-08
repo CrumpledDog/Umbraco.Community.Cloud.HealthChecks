@@ -2,6 +2,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
+using Umbraco.Community.Cloud.HealthChecks.Services;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -16,10 +17,10 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private readonly CloudHealthChecksOptions _options;
 
         public UmbracoLogsFolderSizeHealthCheck(
-            IDistributedCache distributedCache,
+            IHealthCheckResultStore store,
             IHostEnvironment hostEnvironment,
             IOptions<CloudHealthChecksOptions> options)
-            : base(distributedCache, options)
+            : base(store, options)
         {
             _hostEnvironment = hostEnvironment;
             _options = options.Value;

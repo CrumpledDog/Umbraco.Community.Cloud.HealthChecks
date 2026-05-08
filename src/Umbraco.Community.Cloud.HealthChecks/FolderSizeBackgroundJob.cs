@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core;
 using Umbraco.Cms.Core.Sync;
 using Umbraco.Cms.Infrastructure.BackgroundJobs;
+using Umbraco.Community.Cloud.HealthChecks.Services;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -13,7 +14,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
     /// </summary>
     public class FolderSizeBackgroundJob : IDistributedBackgroundJob
     {
-        private readonly IDistributedCache _distributedCache;
+        private readonly IHealthCheckResultStore _store;
         private readonly CloudHealthChecksOptions _options;
         private readonly ILogger<FolderSizeBackgroundJob> _logger;
         private readonly IEnumerable<FolderSizeHealthCheckBase> _healthChecks;
@@ -28,12 +29,12 @@ namespace Umbraco.Community.Cloud.HealthChecks
         public event EventHandler PeriodChanged { add { } remove { } }
 
         public FolderSizeBackgroundJob(
-            IDistributedCache distributedCache,
+            IHealthCheckResultStore store,
             IOptions<CloudHealthChecksOptions> options,
             ILogger<FolderSizeBackgroundJob> logger,
             IEnumerable<FolderSizeHealthCheckBase> healthChecks)
         {
-            _distributedCache = distributedCache;
+            _store = store;
             _options = options.Value;
             _logger = logger;
             _healthChecks = healthChecks;
@@ -70,17 +71,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
 
                     var result = ScanFolder(folderPath);
 
-                    var cacheKey = GetCacheKey(healthCheck.GetType().Name);
-                    var json = JsonSerializer.Serialize(result);
-                    var bytes = System.Text.Encoding.UTF8.GetBytes(json);
-
-                    await _distributedCache.SetAsync(
-                        cacheKey,
-                        bytes,
-                        new DistributedCacheEntryOptions
-                        {
-                            AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(_options.BackgroundScan.CacheExpirationHours)
-                        });
+                    await _store.StoreAsync(healthCheck.GetType().Name, result);
 
                     _logger.LogInformation(
                         "Cached folder size for {HealthCheck}: {Size:N0} bytes, {Files:N0} files",
@@ -99,17 +90,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                         ErrorMessage = ex.Message
                     };
 
-                    var cacheKey = GetCacheKey(healthCheck.GetType().Name);
-                    var json = JsonSerializer.Serialize(errorResult);
-                    var bytes = System.Text.Encoding.UTF8.GetBytes(json);
-
-                    await _distributedCache.SetAsync(
-                        cacheKey,
-                        bytes,
-                        new DistributedCacheEntryOptions
-                        {
-                            AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(_options.BackgroundScan.CacheExpirationHours)
-                        });
+                    await _store.StoreAsync(healthCheck.GetType().Name, errorResult);
                 }
             }
 
