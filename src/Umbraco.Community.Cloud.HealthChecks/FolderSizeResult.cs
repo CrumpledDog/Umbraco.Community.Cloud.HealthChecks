@@ -1,7 +1,9 @@
+using System.Text.Json.Serialization;
+
 namespace Umbraco.Community.Cloud.HealthChecks
 {
     /// <summary>
-    /// Cached result of a folder size calculation
+    /// Cached result of a folder size calculation, optionally with the usage of the disk the folder lives on.
     /// </summary>
     public class FolderSizeResult
     {
@@ -34,5 +36,39 @@ namespace Umbraco.Community.Cloud.HealthChecks
         /// Whether the calculation completed successfully
         /// </summary>
         public bool Success => string.IsNullOrEmpty(ErrorMessage);
+
+        /// <summary>
+        /// The monitored target this result belongs to (see <c>StatsTargetKeys</c>). Null for results written by versions before 1.4.0.
+        /// </summary>
+        public string? TargetKey { get; set; }
+
+        /// <summary>
+        /// Machine identifier of the server that produced the result.
+        /// </summary>
+        public string? MachineId { get; set; }
+
+        /// <summary>
+        /// Site key (site name plus slot, or machine name off Azure) of the server that produced the result.
+        /// </summary>
+        public string? SiteKey { get; set; }
+
+        /// <summary>
+        /// Quota-aware total size of the disk behind the target, when it could be read.
+        /// </summary>
+        public long? DiskTotalBytes { get; set; }
+
+        /// <summary>
+        /// Quota-aware free space of the disk behind the target, when it could be read.
+        /// </summary>
+        public long? DiskFreeBytes { get; set; }
+
+        /// <summary>
+        /// Disk used percentage (0-100), when disk numbers are present.
+        /// </summary>
+        [JsonIgnore]
+        public double? DiskUsedPercent =>
+            DiskTotalBytes is > 0 && DiskFreeBytes.HasValue
+                ? Math.Max(0, DiskTotalBytes.Value - DiskFreeBytes.Value) * 100.0 / DiskTotalBytes.Value
+                : null;
     }
 }

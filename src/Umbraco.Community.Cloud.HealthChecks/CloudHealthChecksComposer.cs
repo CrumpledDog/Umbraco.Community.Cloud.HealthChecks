@@ -6,6 +6,7 @@ using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Cms.Infrastructure.BackgroundJobs;
 using Umbraco.Extensions;
 using Umbraco.Community.Cloud.HealthChecks.Services;
+using Umbraco.Community.Cloud.HealthChecks.Stats;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -37,12 +38,16 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 builder.Services.AddSingleton<IHealthCheckResultStore, DistributedCacheHealthCheckResultStore>();
             }
 
-            // Register folder size health checks so background job can find them
-            builder.Services.AddSingleton<FolderSizeHealthCheckBase, NuGetCacheSizeHealthCheck>();
-            builder.Services.AddSingleton<FolderSizeHealthCheckBase, UmbracoLogsFolderSizeHealthCheck>();
+            // Stats API: catalog of monitored targets, disk usage, thresholds and the measure/record service
+            builder.Services.AddSingleton<IDiskUsageReader, DiskUsageReader>();
+            builder.Services.AddSingleton<IStatsTargetCatalog, StatsTargetCatalog>();
+            builder.Services.AddSingleton<IStatsThresholds, StatsThresholds>();
+            builder.Services.AddSingleton<StatsService>();
+            builder.Services.AddSingleton<IStatsService>(sp => sp.GetRequiredService<StatsService>());
 
-            // Register the distributed background job - runs only on elected SchedulingPublisher
-            builder.Services.AddSingleton<IDistributedBackgroundJob, FolderSizeBackgroundJob>();
+            // Recurring job that runs on every server role (Single, SchedulingPublisher and Subscriber),
+            // so split front-end web apps and per-instance folders are measured too
+            builder.Services.AddSingleton<IRecurringBackgroundJob, StatsRefreshJob>();
         }
     }
 }

@@ -12,6 +12,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
     /// <summary>
     /// Background job that periodically scans folders and caches their sizes for health checks
     /// </summary>
+    [Obsolete("No longer registered. Since 1.4.0 measurements are refreshed on every server role by a recurring job and exposed through IStatsService.")]
     public class FolderSizeBackgroundJob : IDistributedBackgroundJob
     {
         private readonly IHealthCheckResultStore _store;

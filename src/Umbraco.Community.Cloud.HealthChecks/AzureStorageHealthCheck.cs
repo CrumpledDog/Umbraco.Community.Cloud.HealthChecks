@@ -1,8 +1,9 @@
-using System.ComponentModel;
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
+using Umbraco.Community.Cloud.HealthChecks.Stats;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -18,11 +19,31 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private const string LocalTempDirectory = @"D:\local";
         private readonly CloudHealthChecksOptions _options;
         private readonly IHostEnvironment _hostEnvironment;
+        private readonly IDiskUsageReader _diskUsageReader;
+        private readonly IStatsTargetCatalog _catalog;
 
+        /// <summary>Kept for compatibility.</summary>
         public AzureStorageHealthCheck(
             IOptions<CloudHealthChecksOptions> options,
             IHostEnvironment hostEnvironment)
+            : this(
+                options,
+                hostEnvironment,
+                new DiskUsageReader(),
+                new StatsTargetCatalog(hostEnvironment.ContentRootPath, options.Value, Environment.MachineName, new HostingEnvironmentInfo(), null, Directory.Exists))
         {
+        }
+
+        [ActivatorUtilitiesConstructor]
+        public AzureStorageHealthCheck(
+            IOptions<CloudHealthChecksOptions> options,
+            IHostEnvironment hostEnvironment,
+            IDiskUsageReader diskUsageReader,
+            IStatsTargetCatalog catalog)
+        {
+            _diskUsageReader = diskUsageReader;
+            _catalog = catalog;
+            HostingPlatformDetector.ApplyGroup(this, catalog.Platform);
             _options = options.Value;
             _hostEnvironment = hostEnvironment;
         }
@@ -64,10 +85,10 @@ namespace Umbraco.Community.Cloud.HealthChecks
             else
             {
                 // Production mode - only run if we're in Azure (C:\home exists)
-                if (!Directory.Exists(HomeDirectory))
+                if (!_catalog.Find(StatsTargetKeys.HomeDisk)!.AppliesToThisHost || !Directory.Exists(HomeDirectory))
                 {
                     results.Add(new HealthCheckStatus(
-                        "This check is only applicable in Azure Web Apps environment.")
+                        "This check is only applicable on Umbraco Cloud or Azure Web Apps.")
                     {
                         ResultType = StatusResultType.Info
                     });
@@ -126,7 +147,10 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
 
                 // Get actual disk space using Windows API (same as Kudu)
-                GetDiskFreeSpace(directory, out ulong freeBytes, out ulong totalBytes);
+                var usage = _diskUsageReader.Read(directory)
+                    ?? throw new InvalidOperationException("disk usage could not be read");
+                var totalBytes = (ulong)usage.TotalBytes;
+                var freeBytes = (ulong)usage.FreeBytes;
 
                 var totalMb = totalBytes / (1024.0 * 1024.0);
                 var freeMb = freeBytes / (1024.0 * 1024.0);
@@ -172,17 +196,5 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 });
             }
         }
-
-        private static void GetDiskFreeSpace(string path, out ulong freeBytes, out ulong totalBytes)
-        {
-            if (!GetDiskFreeSpaceEx(path, out freeBytes, out totalBytes, out ulong diskFreeBytes))
-            {
-                throw new Win32Exception();
-            }
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool GetDiskFreeSpaceEx(string path, out ulong freeBytes, out ulong totalBytes, out ulong diskFreeBytes);
     }
 }

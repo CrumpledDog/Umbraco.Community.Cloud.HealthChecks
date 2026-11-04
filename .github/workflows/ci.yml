@@ -125,7 +125,7 @@ jobs:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
     - name: Setup Node.js environment
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v6
       with:
         node-version: 'lts/*'
         cache: 'npm'
@@ -159,6 +159,9 @@ jobs:
 
     - name: Build slnx
       run: dotnet build ${{ github.workspace }}/*.slnx -c Release /maxcpucount:1
+
+    - name: Run Tests
+      run: dotnet test ${{ github.workspace }}/*.slnx -c Release --no-build --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
 
     - name: Verify Code Formatting
       run: dotnet format ${{ github.workspace }}/*.slnx --verify-no-changes --verbosity diagnostic

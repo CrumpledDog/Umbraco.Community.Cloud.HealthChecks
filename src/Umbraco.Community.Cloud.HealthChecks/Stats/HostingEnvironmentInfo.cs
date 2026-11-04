@@ -1,0 +1,35 @@
+namespace Umbraco.Community.Cloud.HealthChecks.Stats;
+
+/// <summary>Azure App Service detection and the site key. Variables are read through a delegate so it can be tested.</summary>
+internal sealed class HostingEnvironmentInfo
+{
+    public HostingEnvironmentInfo()
+        : this(Environment.GetEnvironmentVariable, Environment.MachineName)
+    {
+    }
+
+    public HostingEnvironmentInfo(Func<string, string?> getVariable, string machineName)
+    {
+        var siteName = getVariable("WEBSITE_SITE_NAME");
+        var instanceId = getVariable("WEBSITE_INSTANCE_ID");
+
+        // Both must be set: either alone also appears in local tooling and containers.
+        IsAppService = !string.IsNullOrWhiteSpace(siteName) && !string.IsNullOrWhiteSpace(instanceId);
+
+        var slot = getVariable("WEBSITE_SLOT_NAME");
+        SiteKey = IsAppService
+            ? (string.IsNullOrWhiteSpace(slot) ? siteName! : $"{siteName}:{slot}")
+            : machineName;
+
+        Temp = getVariable("TEMP");
+    }
+
+    /// <summary>True on Azure App Service.</summary>
+    public bool IsAppService { get; }
+
+    /// <summary>Identifies the disk shared by every instance of a web app.</summary>
+    public string SiteKey { get; }
+
+    /// <summary>The TEMP environment variable, if set.</summary>
+    public string? Temp { get; }
+}

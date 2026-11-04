@@ -1,8 +1,9 @@
-using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
 using Umbraco.Community.Cloud.HealthChecks.Services;
+using Umbraco.Community.Cloud.HealthChecks.Stats;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -16,6 +17,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private readonly IHostEnvironment _hostEnvironment;
         private readonly CloudHealthChecksOptions _options;
 
+        /// <summary>Kept for compatibility: legacy behaviour (type-name result key, no stats service).</summary>
         public UmbracoLogsFolderSizeHealthCheck(
             IHealthCheckResultStore store,
             IHostEnvironment hostEnvironment,
@@ -25,6 +27,23 @@ namespace Umbraco.Community.Cloud.HealthChecks
             _hostEnvironment = hostEnvironment;
             _options = options.Value;
         }
+
+        [ActivatorUtilitiesConstructor]
+        public UmbracoLogsFolderSizeHealthCheck(
+            IHealthCheckResultStore store,
+            IHostEnvironment hostEnvironment,
+            IOptions<CloudHealthChecksOptions> options,
+            IStatsService stats,
+            IStatsThresholds thresholds,
+            IStatsTargetCatalog catalog)
+            : base(store, options, stats, thresholds)
+        {
+            _hostEnvironment = hostEnvironment;
+            _options = options.Value;
+            HostingPlatformDetector.ApplyGroup(this, catalog.Platform);
+        }
+
+        protected override string? StatsTargetKey => StatsTargetKeys.UmbracoLogs;
 
         public override string FolderPath => Path.Combine(_hostEnvironment.ContentRootPath, "umbraco", "Logs");
 
