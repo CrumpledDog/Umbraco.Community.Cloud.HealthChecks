@@ -1,57 +1,226 @@
 # Umbraco Cloud Health Checks
 
-<p align="center">
-  <img src="src/Umbraco.Community.Cloud.HealthChecks/cloud-healthchecks.png" alt="Cloud Health Checks" width="128" height="128">
-</p>
+<img src="https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/icons/icon.png" alt="Cloud Health Checks" width="128" height="128">
 
-<p align="center">
-  <a href="https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/actions/workflows/ci.yml">
-    <img src="https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/actions/workflows/ci.yml/badge.svg" alt="CI">
-  </a>
-  <a href="https://www.nuget.org/packages/Umbraco.Community.Cloud.HealthChecks">
-    <img src="https://img.shields.io/nuget/v/Umbraco.Community.Cloud.HealthChecks.svg" alt="NuGet Version">
-  </a>
-</p>
+[![CI](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/actions/workflows/ci.yml/badge.svg)](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/nuget/v/Umbraco.Community.Cloud.HealthChecks.svg)](https://www.nuget.org/packages/Umbraco.Community.Cloud.HealthChecks)
 
-Health checks for disk and folder usage on Umbraco Cloud, Azure Web Apps, and VMs or containers, plus a small API so other packages can reuse the measurements.
 
-> For full package documentation including features, installation, usage, and configuration, see the [Package README](src/Umbraco.Community.Cloud.HealthChecks/README.md).
+Health checks that keep an eye on disk and folder usage for Umbraco sites on **Umbraco Cloud**, **Azure Web Apps**, and plain **VMs or containers**: log growth, the NuGet cache and Azure storage quotas, with a small API so other packages can use the same measurements.
 
-> For cleanup scripts to address health check warnings, see the [Cleanup Scripts README](scripts/README.md).
+| Where your site runs | Checks that apply | Health check group |
+| --- | --- | --- |
+| Umbraco Cloud | All: Azure Storage Usage, NuGet Cache Size, Umbraco Logs Folder Size | **Umbraco Cloud** |
+| Azure Web Apps (App Service) | All three | **Azure Web App** |
+| VM, container or anywhere else | Umbraco Logs Folder Size only | **Hosting** |
 
-![Health Check Results](example.png)
+The platform is detected automatically, there is nothing to configure (see [Hosting platform detection](#hosting-platform-detection)).
 
-## Development
+## Features
 
-### Building the Project
+### Background Scanning
+
+To prevent timeouts and performance issues, folder size health checks use a **background scanning** strategy:
+
+- **Scheduled Scans**: Folders are scanned every 6 hours by default (configurable)
+- **Distributed Cache**: Results are cached and shared across all servers in load-balanced environments
+- **No Timeouts**: Health checks return instantly using cached data
+- **No scans in requests**: until the first background measurement exists the check reports "no measurement yet" instead of walking the folder (with background scanning disabled it falls back to a live scan)
+- **Timestamp Display**: Shows "calculated X ago" so you know data freshness
+
+This approach is especially valuable for large folders (NuGet cache, logs) where scanning can take several seconds or minutes.
+
+### Included Health Checks
+
+- **Azure Storage Usage** - Monitors storage usage for `C:\home` and `C:\local` directories in Umbraco Cloud
+  - Warning threshold at 75% usage
+  - Error threshold at 90% usage
+  - Windows-only support
+  - Uses Windows API for instant results (no scanning required)
+
+- **NuGet Cache Size** - Monitors the size of the NuGet cache directory (Umbraco Cloud and Azure Web Apps only)
+  - **Intelligent defaults**: Automatically calculates thresholds based on total home directory size (50% for error, 75% of error for warning)
+  - Uses background scanning with distributed cache
+  - Displays calculation timestamp
+  
+- **Local Temp Folder Size** - Tracks the size of each server's local temp folder and the usage of its drive (Umbraco Cloud and Azure Web Apps only; per instance)
+
+- **Umbraco Logs Folder Size** - Tracks the size of Umbraco log files and the age of the oldest one (applies everywhere, including VMs and containers)
+  - Uses background scanning with distributed cache
+  - Displays calculation timestamp
+
+### Hosting platform detection
+
+The package detects where it is running, so the same package works on any infrastructure:
+
+- **Umbraco Cloud** (`Umbraco:Cloud:IsRunningOnCloud`, or an App Service with `Umbraco:Cloud:Identity:EnvironmentId` / `umbraco-cloud.json`) and **Azure Web Apps** (both `WEBSITE_SITE_NAME` and `WEBSITE_INSTANCE_ID` set): all checks apply. The health check group is named **Umbraco Cloud** or **Azure Web App** accordingly.
+- **VMs, containers and anywhere else**: only the Umbraco Logs check applies (group **Hosting**). The Azure-specific checks (storage quotas, NuGet cache under `C:home`) would only report that they do not apply, so they are left out.
+
+`CloudHealthChecks:LocalTestMode` still makes every check run locally. The detected platform is available as `IStatsTargetCatalog.Platform`.
+
+### Reporting for all servers
+
+When more than one server is known, each check reports every server, named, instead of only the one serving the backoffice request:
+
+- Servers are listed from Umbraco's own server registration table (`umbracoLastSynced`, the same source the Crumpled Hosting Kit uses). Each server's refresh job also publishes its site key and name, so servers that have never reported (or were decommissioned) are left out.
+- Names follow the hosting kit: the machine name plus `/{SiteName}` when `Umbraco:CMS:Hosting:SiteName` is set. When it is not set on Azure App Service the App Service site name (and slot) is used instead, so servers on one plan stay distinguishable.
+- Shared disks (logs, NuGet cache, `C:\home`) are reported once per site, naming the site and its servers; per-instance folders and disks (local temp, `C:\local`, the temp drive) once per server. The current server is listed first.
+- With a single server the output is unchanged.
+
+## Installation
+
+Install via NuGet Package Manager or the .NET CLI:
 
 ```bash
-dotnet build
+dotnet add package Umbraco.Community.Cloud.HealthChecks
 ```
 
-### Packaging
+Or via NuGet Package Manager:
 
 ```bash
-dotnet pack --configuration Release
+Install-Package Umbraco.Community.Cloud.HealthChecks
 ```
+
+## Usage
+
+After installation, the health checks will automatically appear in the Umbraco backoffice under:
+
+**Settings → Health Check**
+
+The health checks are grouped under **"Umbraco Cloud"** for easy identification.
+
+![Health Check Results](https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/example.png)
+
+## Configuration
+
+All health check settings can be customized via `appsettings.json`. The package uses sensible defaults, but you can override them to suit your environment.
+
+See the [Configuration Guide](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/blob/develop/v1/CONFIGURATION.md) for detailed configuration options and examples.
+
+Quick example:
+
+```json
+{
+  "CloudHealthChecks": {
+    "BackgroundScan": {
+      "Enabled": true,
+      "ScanIntervalHours": 6.0,
+      "CacheExpirationHours": 720.0
+    },
+    "UmbracoLogs": {
+      "WarningThresholdMb": 200,
+      "ErrorThresholdMb": 1000
+    }
+  }
+}
+```
+
+### Background Scan Configuration
+
+- **Enabled** (default: `true`) - Enable/disable background scanning
+- **ScanIntervalHours** (default: `6.0`) - How often to scan folders (in hours)
+- **CacheExpirationHours** (default: `720.0`) - How long to cache results (in hours / 30 days)
+
+- **ScanTimeLimitMinutes** (default: `15.0`) - Time limit for scanning one folder. On overrun an error result ("took longer than the limit, will retry") is stored instead of a partial number
+
+**Note**: Since 1.4.0 the refresh job runs on **every** server role (Single, SchedulingPublisher and Subscriber), so a split front-end web app's own disks are measured too. Folders on a disk shared by all instances of a web app (logs, NuGet cache) are measured once per site per interval using a best-effort claim marker in the result store (overlap is harmless); per-instance folders (local temp) and disk usage are measured by each server. Health checks always show the result for the server or site they run on.
+
+## Stats API (for other packages)
+
+Since 1.4.0 the package exposes its measurements so other packages (for example a clean-up tool) don't need to scan folders themselves. Everything is in the `Umbraco.Community.Cloud.HealthChecks.Stats` namespace and registered in DI.
+
+**Scope model.** A monitored target is either `Shared` (one disk shared by all instances of a web app, e.g. `C:\home`: logs, NuGet cache) or `PerInstance` (local to each worker, e.g. `D:\local` temp). Shared results are keyed by `ServerKey.SiteKey` (`WEBSITE_SITE_NAME` plus `WEBSITE_SLOT_NAME`; the machine name off Azure); per-instance results by `ServerKey.MachineId` (`IMachineInfoFactory.GetMachineIdentifier()`). Azure App Service is detected when both `WEBSITE_SITE_NAME` and `WEBSITE_INSTANCE_ID` are set.
+
+```csharp
+public interface IStatsTargetCatalog
+{
+    IReadOnlyList<StatsTarget> Targets { get; }   // key, display name, resolved path, scope, kind, applies to this host
+    ServerKey CurrentServer { get; }              // MachineId + SiteKey
+    StatsTarget? Find(string key);
+}
+
+public interface IStatsService
+{
+    // Latest stored result for a server (default: this one). Never scans.
+    Task<FolderSizeResult?> GetLatestAsync(string targetKey, ServerKey? server = null, CancellationToken ct = default);
+
+    // Scan now (single pass, honours the time limit), store and return. Background callers only.
+    Task<FolderSizeResult> MeasureAsync(string targetKey, TimeSpan? timeLimit = null, CancellationToken ct = default);
+
+    // Publish a result (e.g. size left after a clean-up) without rescanning.
+    Task RecordAsync(string targetKey, FolderSizeResult result, CancellationToken ct = default);
+}
+
+public interface IStatsThresholds
+{
+    TargetThresholds Resolve(string targetKey, long? measuredDiskTotalBytes = null); // configured values or the adaptive NuGet defaults (from the measured site quota)
+    ThresholdEvaluation Evaluate(string targetKey, FolderSizeResult? result, DateTime? nowUtc = null); // Level None/Ok/Warning/Error + reasons
+}
+
+public interface IStatsServers
+{
+    Task<IReadOnlyList<StatsServer>> GetServersAsync(CancellationToken ct = default); // known servers: ServerKey (MachineId + SiteKey), DisplayName, IsCurrent, LastReportedAt
+}
+
+public interface IDiskUsageReader
+{
+    DiskUsage? Read(string path);                 // GetDiskFreeSpaceEx on the path (quota-aware); null off Windows
+}
+```
+
+Target keys are in `StatsTargetKeys`: `umbraco-logs`, `nuget-cache`, `local-temp` (folders) and `home-disk`, `local-disk`, `temp-disk` (disks). `FolderSizeResult` gained `TargetKey`, `MachineId`, `SiteKey`, `DiskTotalBytes`, `DiskFreeBytes` and `DiskUsedPercent`; older stored results still deserialize.
+
+Notes:
+
+- `MeasureAsync` walks the folder, so call it from background code only, never from a request.
+- Disk targets on the current server are read live by `GetLatestAsync` (instant); for other servers the numbers last stored by that server's job are returned.
+- `LocalTestMode` makes the Azure targets resolve to local paths so the API can be exercised off Azure.
+- Results from 1.3.x are still read, and the 1.3.x cache keys are still written for the shared logs and NuGet targets, so a mixed-version fleet keeps working during a rollout.
+
+## Requirements
+
+- Umbraco CMS v17+
+- Umbraco Cloud, Azure Web Apps (Windows), or any other host (VM, container) for the Umbraco Logs check
+
+## Proactive Monitoring
+
+To get the most value from these health checks, set up automated monitoring using Umbraco's built-in notification system or third-party integrations.
+
+### Built-in Email Notifications
+
+Umbraco includes a built-in email notification system for health checks. Configure it in **Settings → Health Check** to receive email alerts when issues are detected. See the [official documentation](https://docs.umbraco.com/umbraco-cms/reference/configuration/healthchecks#notification) for setup instructions. This allows you to:
+- Get early warnings when storage reaches 75% capacity
+- Receive critical alerts at 90% usage before your site runs out of space
+- Monitor log file growth and aging
+- Take proactive action to prevent downtime
+
+### Slack Notifications
+
+For real-time team alerts, combine this package with the [Health Check Slack Notification Method](https://marketplace.umbraco.com/package/our.umbraco.healthcheckslacknotificationmethod) package. This sends automated Slack messages to your team channel when storage thresholds are exceeded.
+
+Both notification methods are especially valuable in Umbraco Cloud environments where storage space is limited and can impact site availability.
+
+## Cleanup scripts
+
+For scripts that address health check warnings (clearing the NuGet cache and Umbraco logs) see the [scripts README](scripts/README.md).
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the branching strategy, formatting rules and commit conventions.
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+```bash
+dotnet build
+dotnet test
+dotnet pack --configuration Release
+```
 
-## License
+## Support
 
-This project is licensed under the terms specified in the [LICENSE](LICENSE) file.
+For issues, questions, or feature requests, please use the [GitHub Issues](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/issues) page.
 
 ## Credits
 
 Developed by **Crumpled Dog** and the **Umbraco Community**.
 
-## Support
+## License
 
-For issues, questions, or feature requests, please use the [GitHub Issues](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/issues) page.
+This project is licensed under the terms specified in the [LICENSE](LICENSE) file.

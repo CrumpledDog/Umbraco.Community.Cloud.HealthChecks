@@ -4,9 +4,9 @@ using Microsoft.Extensions.Logging;
 using Umbraco.Cms.Core.Composing;
 using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Cms.Infrastructure.BackgroundJobs;
-using Umbraco.Extensions;
 using Umbraco.Community.Cloud.HealthChecks.Services;
 using Umbraco.Community.Cloud.HealthChecks.Stats;
+using Umbraco.Extensions;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {

@@ -1,0 +1,35 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!--
+    These files are intended to always diverge between the develop/v1 (Umbraco 17) and develop/v2
+    (Umbraco 18) branch lines once v2 exists - see /.gitattributes and CONTRIBUTING.md.
+
+    The Umbraco.Cms.* pins below are bounded ranges, not bare versions - a bare version (e.g. "17.7.0")
+    is a floating NuGet *minimum*, not an exact pin, so it can still resolve upward into the next major
+    if anything in the dependency graph ends up requiring a higher version. This template only ever
+    scaffolds the develop/v1 (Umbraco 17) starting point (see template.json), so capping below 18.0.0
+    is always correct here - bump the upper bound too if this template line is ever retargeted.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Umbraco.Cms" Version="[17.7.0,18.0.0)" />
+    <PackageVersion Include="Umbraco.Cms.DevelopmentMode.Backoffice" Version="[17.7.0,18.0.0)" />
+    <PackageVersion Include="Umbraco.Cms.Web.Common" Version="[17.0.0,18.0.0)" />
+    <PackageVersion Include="Microsoft.ICU.ICU4C.Runtime" Version="72.1.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.103" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="GitHubActionsTestLogger" Version="3.0.5" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+</Project>

@@ -1,9 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
-using Umbraco.Community.Cloud.HealthChecks.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
 using Umbraco.Cms.Core.Sync;
+using Umbraco.Community.Cloud.HealthChecks.Services;
 using Umbraco.Community.Cloud.HealthChecks.Stats;
 using Xunit;
 

@@ -1,5 +1,10 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".github/workflows/release.yml" />
+    <File Path=".github/workflows/ci.yml" />
+    <File Path="README.md" />
+  </Folder>
   <Project Path="src/Umbraco.Community.Cloud.HealthChecks/Umbraco.Community.Cloud.HealthChecks.csproj" />
-  <Project Path="src/Umbraco.Community.Cloud.HealthChecks.Tests/Umbraco.Community.Cloud.HealthChecks.Tests.csproj" />
-  <Project Path="src/Umbraco.Community.Cloud.HealthChecks.TestSite/Umbraco.Community.Cloud.HealthChecks.TestSite.csproj" Id="e0ac10e4-0fdd-4624-b507-6f3302b77e83" />
+  <Project Path="src/Umbraco.Community.Cloud.HealthChecks.DemoSite/Umbraco.Community.Cloud.HealthChecks.DemoSite.csproj" />
+  <Project Path="tests/Umbraco.Community.Cloud.HealthChecks.Tests/Umbraco.Community.Cloud.HealthChecks.Tests.csproj" />
 </Solution>

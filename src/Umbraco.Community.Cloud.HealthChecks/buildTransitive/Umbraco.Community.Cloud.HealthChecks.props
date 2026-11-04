@@ -1,5 +1,9 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-	<Import Project="..\buildMultiTargeting\Umbraco.Community.Cloud.HealthChecks.props" />
+	<!-- The Razor SDK generates a buildTransitive props file with this exact name to register the package's static
+	     web assets (App_Plugins) with consuming sites. Packing our own file under the same name replaces it, so it
+	     must keep this import or the backoffice files are never served. The imported file only exists when the
+	     package has static web assets, hence the Exists check. -->
+	<Import Project="$(MSBuildThisFileDirectory)..\buildMultiTargeting\Umbraco.Community.Cloud.HealthChecks.props" Condition="Exists('$(MSBuildThisFileDirectory)..\buildMultiTargeting\Umbraco.Community.Cloud.HealthChecks.props')" />
 	<ItemGroup>
 		<UmbracoJsonSchemaFiles Include="$(MSBuildThisFileDirectory)..\appsettings-schema.Umbraco.Community.Cloud.HealthChecks.json" Weight="-50" />
 	</ItemGroup>
