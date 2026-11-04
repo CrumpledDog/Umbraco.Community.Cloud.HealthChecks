@@ -249,3 +249,56 @@ public class HealthCheckCompatibilityTests
         Assert.Equal("Hosting", provider.GetRequiredService<AzureStorageHealthCheck>().Group);
     }
 }
+
+[HealthCheck("5B0B2E8C-3A55-4E57-9E6B-0C6B6E9D1A11", "NuGet like", Group = "Test")]
+internal sealed class NuGetLikeCheck : FolderSizeHealthCheckBase
+{
+    private readonly string _path;
+
+    public NuGetLikeCheck(string path, IHealthCheckResultStore store, IOptions<CloudHealthChecksOptions> options, IStatsService stats, IStatsThresholds thresholds)
+        : base(store, options, stats, thresholds)
+    {
+        _path = path;
+    }
+
+    protected override string? StatsTargetKey => StatsTargetKeys.NuGetCache;
+
+    public override string FolderPath => _path;
+
+    protected override long WarningThresholdMb => 0;
+
+    protected override long ErrorThresholdMb => 0;
+
+    protected override string FolderDisplayName => "NuGet cache";
+}
+
+public class QuotaAwareHealthCheckTests
+{
+    private const long Gb = 1024L * 1024 * 1024;
+
+    [Fact]
+    public async Task Health_check_uses_the_cached_results_quota_for_status_and_the_displayed_thresholds()
+    {
+        using var root = new TempFolder();
+        var store = new InMemoryResultStore();
+        var options = Options.Create(new CloudHealthChecksOptions { LocalTestMode = true });
+        var catalog = Build.TestModeCatalog(root.Path);
+        var disk = new FakeDiskReader { Usage = new DiskUsage(100 * Gb, 0) }; // this host: 100 GB
+        var stats = Build.Service(store, catalog, disk, options.Value);
+        // cached result from a site with a 6 GB quota: 4 GB cache is over its 3 GB error threshold
+        store.Items["stats:shared:site1:nuget-cache"] = new FolderSizeResult
+        {
+            SizeInBytes = 4 * Gb,
+            FileCount = 1,
+            CalculatedAt = DateTime.UtcNow,
+            DiskTotalBytes = 6 * Gb,
+            DiskFreeBytes = Gb
+        };
+        var check = new NuGetLikeCheck(root.Path, store, options, stats, new StatsThresholds(options, catalog, disk));
+
+        var status = Assert.Single(await check.GetStatusAsync());
+
+        Assert.Equal(StatusResultType.Error, status.ResultType);
+        Assert.Contains("3072 MB", status.Message);
+    }
+}

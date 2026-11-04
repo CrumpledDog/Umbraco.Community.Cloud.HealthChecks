@@ -247,10 +247,10 @@ namespace Umbraco.Community.Cloud.HealthChecks
 
                 if (UsesStats)
                 {
-                    // Shared evaluation (same thresholds the public API exposes)
+                    // Shared evaluation (same thresholds the public API exposes). Reuse the cached result (it carries the measured disk quota); only a live scan builds a fresh one
                     var evaluation = _thresholds!.Evaluate(
                         StatsTargetKey!,
-                        new FolderSizeResult
+                        cachedResult ?? new FolderSizeResult
                         {
                             SizeInBytes = sizeInBytes,
                             FileCount = fileCount,
@@ -317,12 +317,16 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 else
                 {
                     // Show threshold details even when within normal limits
-                    var warningThresholdDisplay = WarningThresholdMb >= 1024
-                        ? $"{WarningThresholdMb / 1024.0:F1} GB"
-                        : $"{WarningThresholdMb} MB";
-                    var errorThresholdDisplay = ErrorThresholdMb >= 1024
-                        ? $"{ErrorThresholdMb / 1024.0:F1} GB"
-                        : $"{ErrorThresholdMb} MB";
+                    // (from the same measured quota the status was evaluated with)
+                    var displayed = UsesStats ? _thresholds!.Resolve(StatsTargetKey!, cachedResult?.DiskTotalBytes) : null;
+                    var warningMb = displayed?.SizeWarningMb ?? WarningThresholdMb;
+                    var errorMb = displayed?.SizeErrorMb ?? ErrorThresholdMb;
+                    var warningThresholdDisplay = warningMb >= 1024
+                        ? $"{warningMb / 1024.0:F1} GB"
+                        : $"{warningMb} MB";
+                    var errorThresholdDisplay = errorMb >= 1024
+                        ? $"{errorMb / 1024.0:F1} GB"
+                        : $"{errorMb} MB";
                     message += $" - Within normal limits (warning: {warningThresholdDisplay}, error: {errorThresholdDisplay}).";
                 }
 
