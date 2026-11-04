@@ -314,10 +314,17 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     if (UsesStats && _options.BackgroundScan.Enabled)
                     {
                         // Never walk the folder in a request: the background job (every server role) will measure it shortly
-                        results.Add(new HealthCheckStatus(
-                            $"{FolderDisplayName}: no measurement has been recorded for this server yet. The background scan runs shortly after start-up and then every {_options.BackgroundScan.ScanIntervalHours:0.##} hours.")
+                        var pending = $"{FolderDisplayName}: no measurement has been recorded for this server yet. The background scan runs shortly after start-up and then every {_options.BackgroundScan.ScanIntervalHours:0.##} hours.";
+                        var uptime = DateTime.UtcNow - System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime();
+                        if (uptime > TimeSpan.FromMinutes(10))
                         {
-                            ResultType = StatusResultType.Info
+                            // The job starts about 2-3 minutes after start-up: if nothing exists by now it is not running here
+                            pending += $" This server has been running for {uptime.TotalMinutes:0} minutes, so the scan is overdue: check that this instance holds MainDom (look for 'Could not register with MainDom' in the logs) and that its server role is Single, SchedulingPublisher or Subscriber.";
+                        }
+
+                        results.Add(new HealthCheckStatus(pending)
+                        {
+                            ResultType = uptime > TimeSpan.FromMinutes(10) ? StatusResultType.Warning : StatusResultType.Info
                         });
                         return results;
                     }

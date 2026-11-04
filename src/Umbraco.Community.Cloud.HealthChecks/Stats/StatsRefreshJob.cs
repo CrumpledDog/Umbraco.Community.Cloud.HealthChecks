@@ -86,6 +86,13 @@ internal sealed class StatsRefreshJob : IRecurringBackgroundJob
 
             try
             {
+                // A folder that does not exist here (e.g. no NuGet cache on this host) is not a failure
+                if (target.Kind == StatsKind.Folder && !Directory.Exists(target.Path))
+                {
+                    _logger.LogDebug("Skipping {Target}: folder not found at {Path}", target.Key, target.Path);
+                    continue;
+                }
+
                 // Disk usage is a cheap quota read: no claim. Per instance folders are this server's alone.
                 var needsClaim = target.Kind == StatsKind.Folder && target.Scope == StatsScope.Shared;
                 if (needsClaim && !await _stats.TryClaimSharedAsync(target, Period))
