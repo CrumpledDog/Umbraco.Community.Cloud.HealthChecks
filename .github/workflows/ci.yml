@@ -161,7 +161,7 @@ jobs:
       run: dotnet build ${{ github.workspace }}/*.slnx -c Release /maxcpucount:1
 
     - name: Run Tests
-      run: dotnet test ${{ github.workspace }}/*.slnx -c Release --no-build
+      run: dotnet test ${{ github.workspace }}/*.slnx -c Release --no-build --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
 
     - name: Verify Code Formatting
       run: dotnet format ${{ github.workspace }}/*.slnx --verify-no-changes --verbosity diagnostic
