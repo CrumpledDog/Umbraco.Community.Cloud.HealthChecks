@@ -171,7 +171,18 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
                 else
                 {
-                    // Fall back to live scan if no cached result
+                    if (UsesStats && _options.BackgroundScan.Enabled)
+                    {
+                        // Never walk the folder in a request: the background job (every server role) will measure it shortly
+                        results.Add(new HealthCheckStatus(
+                            $"{FolderDisplayName}: no measurement has been recorded for this server yet. The background scan runs shortly after start-up and then every {_options.BackgroundScan.ScanIntervalHours:0.##} hours.")
+                        {
+                            ResultType = StatusResultType.Info
+                        });
+                        return results;
+                    }
+
+                    // Legacy checks, or background scanning disabled: live scan
                     var (size, count, oldestFile) = GetDirectoryInfo(folderPath);
                     sizeInBytes = size;
                     fileCount = count;
@@ -189,14 +200,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                             CalculatedAt = calculatedAt
                         };
 
-                        if (UsesStats)
-                        {
-                            await _stats!.RecordAsync(StatsTargetKey!, liveScanResult);
-                        }
-                        else
-                        {
-                            await _store.StoreAsync(GetType().Name, liveScanResult);
-                        }
+                        await _store.StoreAsync(GetType().Name, liveScanResult);
                     }
                 }
 

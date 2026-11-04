@@ -63,6 +63,10 @@ public sealed class StatsService : IStatsService
     // One scan at a time per process: a scheduled run and an on-demand caller must not walk the same disk together.
     private readonly SemaphoreSlim _scanGate = new(1, 1);
 
+    // Serialises publishing a result; the per-target version lets a scan notice that a result was recorded while it ran.
+    private readonly SemaphoreSlim _publishGate = new(1, 1);
+    private readonly Dictionary<string, int> _versions = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Creates the service.</summary>
     public StatsService(
         IHealthCheckResultStore store,
@@ -99,8 +103,13 @@ public sealed class StatsService : IStatsService
 
         if (result == null && isCurrent && target.Scope == StatsScope.Shared && LegacyNames.TryGetValue(target.Key, out var legacy))
         {
-            // Written by 1.3.x (one result per health check type)
-            result = await _store.GetAsync(legacy);
+            // Written by 1.3.x (one result per health check type). Newer instances also write it for every site sharing the
+            // store, so ignore a result that names a different site; results without site metadata are genuinely old.
+            var legacyResult = await _store.GetAsync(legacy);
+            if (legacyResult != null && (legacyResult.SiteKey == null || legacyResult.SiteKey == requested.SiteKey))
+            {
+                result = legacyResult;
+            }
         }
 
         return result;
@@ -119,11 +128,8 @@ public sealed class StatsService : IStatsService
         if (target.Kind == StatsKind.Disk)
         {
             var disk = ReadDisk(target) ?? Failed(target, $"Disk usage for {target.DisplayName} is not available");
-            if (disk.Success)
-            {
-                await PersistAsync(target, disk);
-            }
-
+            // Persist failures too, so remote readers don't keep seeing this server's last successful reading
+            await PersistAsync(target, disk);
             return disk;
         }
 
@@ -137,6 +143,8 @@ public sealed class StatsService : IStatsService
         await _scanGate.WaitAsync(cancellationToken);
         try
         {
+            var versionAtStart = VersionOf(target);
+
             using var limitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             limitCts.CancelAfter(limit);
 
@@ -159,8 +167,24 @@ public sealed class StatsService : IStatsService
             }
 
             Stamp(target, result);
-            await PersistAsync(target, result);
-            return result;
+
+            await _publishGate.WaitAsync(CancellationToken.None);
+            try
+            {
+                if (VersionOf(target) != versionAtStart)
+                {
+                    // A result was recorded (e.g. after a clean-up) while this scan ran: the scan saw the folder before it
+                    // and must not undo it.
+                    return await _store.GetAsync(StoreName(target, _catalog.CurrentServer)) ?? result;
+                }
+
+                await PersistAsync(target, result);
+                return result;
+            }
+            finally
+            {
+                _publishGate.Release();
+            }
         }
         finally
         {
@@ -187,7 +211,30 @@ public sealed class StatsService : IStatsService
         };
 
         Stamp(target, copy, overwriteDisk: false);
-        await PersistAsync(target, copy);
+
+        // Short critical section (never held during a scan): bump the version so a scan that started earlier won't overwrite this
+        await _publishGate.WaitAsync(cancellationToken);
+        try
+        {
+            lock (_versions)
+            {
+                _versions[target.Key] = VersionOf(target) + 1;
+            }
+
+            await PersistAsync(target, copy);
+        }
+        finally
+        {
+            _publishGate.Release();
+        }
+    }
+
+    private int VersionOf(StatsTarget target)
+    {
+        lock (_versions)
+        {
+            return _versions.TryGetValue(target.Key, out var v) ? v : 0;
+        }
     }
 
     /// <summary>

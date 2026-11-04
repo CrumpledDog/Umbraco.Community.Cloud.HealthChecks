@@ -42,6 +42,9 @@ internal static class FolderScanner
             }
         }
 
+        // The deadline may expire while trailing empty/skipped directories are enumerated: never report that as success
+        cancellationToken.ThrowIfCancellationRequested();
+
         return new FolderSizeResult
         {
             SizeInBytes = totalSize,

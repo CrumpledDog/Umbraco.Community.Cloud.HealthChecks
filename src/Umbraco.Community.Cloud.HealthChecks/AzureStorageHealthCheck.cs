@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
@@ -21,6 +22,19 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private readonly IDiskUsageReader _diskUsageReader;
         private readonly IStatsTargetCatalog _catalog;
 
+        /// <summary>Kept for compatibility.</summary>
+        public AzureStorageHealthCheck(
+            IOptions<CloudHealthChecksOptions> options,
+            IHostEnvironment hostEnvironment)
+            : this(
+                options,
+                hostEnvironment,
+                new DiskUsageReader(),
+                new StatsTargetCatalog(hostEnvironment.ContentRootPath, options.Value, Environment.MachineName, new HostingEnvironmentInfo(), null, Directory.Exists))
+        {
+        }
+
+        [ActivatorUtilitiesConstructor]
         public AzureStorageHealthCheck(
             IOptions<CloudHealthChecksOptions> options,
             IHostEnvironment hostEnvironment,

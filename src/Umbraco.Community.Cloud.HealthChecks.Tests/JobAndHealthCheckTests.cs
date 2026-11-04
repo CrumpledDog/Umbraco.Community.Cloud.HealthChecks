@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Umbraco.Community.Cloud.HealthChecks.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
@@ -176,26 +178,74 @@ public class HealthCheckCompatibilityTests
         Assert.Equal(StatusResultType.Success, status.ResultType);
     }
 
+    private static UmbracoLogsFolderSizeHealthCheck LogsCheck(TempFolder root, InMemoryResultStore store, CloudHealthChecksOptions o)
+    {
+        var options = Options.Create(o);
+        var catalog = Build.TestModeCatalog(root.Path);
+        var disk = new FakeDiskReader();
+        return new UmbracoLogsFolderSizeHealthCheck(
+            store,
+            new FakeHostEnvironment { ContentRootPath = root.Path },
+            options,
+            Build.Service(store, catalog, disk, o),
+            new StatsThresholds(options, catalog, disk),
+            catalog);
+    }
+
     [Fact]
-    public async Task Logs_health_check_live_scan_fallback_is_persisted_through_the_service()
+    public async Task Cold_cache_never_scans_in_the_request_it_reports_pending_until_the_job_has_run()
     {
         using var root = new TempFolder();
         root.AddFile("umbraco/Logs/a.txt", 5);
         var store = new InMemoryResultStore();
-        var options = Options.Create(new CloudHealthChecksOptions { LocalTestMode = true });
-        var catalog = Build.TestModeCatalog(root.Path);
-        var disk = new FakeDiskReader();
-        var check = new UmbracoLogsFolderSizeHealthCheck(
-            store,
-            new FakeHostEnvironment { ContentRootPath = root.Path },
-            options,
-            Build.Service(store, catalog, disk, options.Value),
-            new StatsThresholds(options, catalog, disk),
-            catalog);
 
-        var status = Assert.Single(await check.GetStatusAsync());
+        var status = Assert.Single(await LogsCheck(root, store, new CloudHealthChecksOptions { LocalTestMode = true }).GetStatusAsync());
+
+        Assert.Equal(StatusResultType.Info, status.ResultType);
+        Assert.Contains("no measurement", status.Message);
+        Assert.Empty(store.Items);
+    }
+
+    [Fact]
+    public async Task With_background_scanning_disabled_the_check_still_live_scans()
+    {
+        using var root = new TempFolder();
+        root.AddFile("umbraco/Logs/a.txt", 5);
+        var store = new InMemoryResultStore();
+
+        var status = Assert.Single(await LogsCheck(root, store, new CloudHealthChecksOptions { LocalTestMode = true, BackgroundScan = { Enabled = false } }).GetStatusAsync());
 
         Assert.Equal(StatusResultType.Success, status.ResultType);
-        Assert.Equal(5, store.Items["stats:shared:site1:umbraco-logs"].SizeInBytes);
+    }
+
+    [Fact]
+    public void Original_public_constructors_are_kept_and_di_still_picks_the_new_ones()
+    {
+        var options = Options.Create(new CloudHealthChecksOptions());
+        var store = new InMemoryResultStore();
+        var host = new FakeHostEnvironment { ContentRootPath = Path.GetTempPath() };
+
+        Assert.NotNull(new UmbracoLogsFolderSizeHealthCheck(store, host, options));
+        Assert.NotNull(new NuGetCacheSizeHealthCheck(store, options));
+        Assert.NotNull(new AzureStorageHealthCheck(options, host));
+
+        using var root = new TempFolder();
+        var catalog = Build.TestModeCatalog(root.Path);
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        services.AddSingleton<IHealthCheckResultStore>(store);
+        services.AddSingleton<Microsoft.Extensions.Hosting.IHostEnvironment>(host);
+        services.AddSingleton(options);
+        services.AddSingleton<IDiskUsageReader>(new FakeDiskReader());
+        services.AddSingleton<IStatsTargetCatalog>(catalog);
+        services.AddSingleton<IStatsThresholds, StatsThresholds>();
+        services.AddSingleton<IStatsService>(Build.Service(store, catalog));
+        services.AddSingleton<UmbracoLogsFolderSizeHealthCheck>();
+        services.AddSingleton<NuGetCacheSizeHealthCheck>();
+        services.AddSingleton<AzureStorageHealthCheck>();
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Equal("Hosting", provider.GetRequiredService<UmbracoLogsFolderSizeHealthCheck>().Group);
+        Assert.Equal("Hosting", provider.GetRequiredService<NuGetCacheSizeHealthCheck>().Group);
+        Assert.Equal("Hosting", provider.GetRequiredService<AzureStorageHealthCheck>().Group);
     }
 }

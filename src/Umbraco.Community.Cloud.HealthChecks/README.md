@@ -13,7 +13,7 @@ To prevent timeouts and performance issues, folder size health checks use a **ba
 - **Scheduled Scans**: Folders are scanned every 6 hours by default (configurable)
 - **Distributed Cache**: Results are cached and shared across all servers in load-balanced environments
 - **No Timeouts**: Health checks return instantly using cached data
-- **Live Fallback**: If cache expires, a live scan is performed and cached for 30 minutes
+- **No scans in requests**: until the first background measurement exists the check reports "no measurement yet" instead of walking the folder (with background scanning disabled it falls back to a live scan)
 - **Timestamp Display**: Shows "calculated X ago" so you know data freshness
 
 This approach is especially valuable for large folders (NuGet cache, logs) where scanning can take several seconds or minutes.

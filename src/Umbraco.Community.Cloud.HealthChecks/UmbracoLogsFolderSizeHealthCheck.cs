@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
@@ -16,6 +17,18 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private readonly IHostEnvironment _hostEnvironment;
         private readonly CloudHealthChecksOptions _options;
 
+        /// <summary>Kept for compatibility: legacy behaviour (type-name result key, no stats service).</summary>
+        public UmbracoLogsFolderSizeHealthCheck(
+            IHealthCheckResultStore store,
+            IHostEnvironment hostEnvironment,
+            IOptions<CloudHealthChecksOptions> options)
+            : base(store, options)
+        {
+            _hostEnvironment = hostEnvironment;
+            _options = options.Value;
+        }
+
+        [ActivatorUtilitiesConstructor]
         public UmbracoLogsFolderSizeHealthCheck(
             IHealthCheckResultStore store,
             IHostEnvironment hostEnvironment,

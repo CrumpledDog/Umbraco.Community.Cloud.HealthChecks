@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
 using Umbraco.Community.Cloud.HealthChecks.Services;
@@ -16,6 +17,18 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private readonly IStatsThresholds _thresholds;
         private readonly bool _localTestMode;
 
+        /// <summary>Kept for compatibility: legacy behaviour (type-name result key, no stats service).</summary>
+        public NuGetCacheSizeHealthCheck(
+            IHealthCheckResultStore store,
+            IOptions<CloudHealthChecksOptions> options)
+            : base(store, options)
+        {
+            _catalog = new StatsTargetCatalog(AppContext.BaseDirectory, options.Value, Environment.MachineName, new HostingEnvironmentInfo(), null, Directory.Exists);
+            _thresholds = new StatsThresholds(options, _catalog, new DiskUsageReader());
+            _localTestMode = options.Value.LocalTestMode;
+        }
+
+        [ActivatorUtilitiesConstructor]
         public NuGetCacheSizeHealthCheck(
             IHealthCheckResultStore store,
             IOptions<CloudHealthChecksOptions> options,

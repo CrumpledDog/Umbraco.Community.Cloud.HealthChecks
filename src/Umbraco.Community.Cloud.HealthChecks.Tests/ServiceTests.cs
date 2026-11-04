@@ -308,3 +308,85 @@ public class ClaimTests
         Assert.True(await svc.TryClaimSharedAsync(target, Interval));
     }
 }
+
+public class ReviewFixTests
+{
+    private static (StatsService svc, InMemoryResultStore store, FakeDiskReader disk, TempFolder root) Create()
+    {
+        var root = new TempFolder();
+        var store = new InMemoryResultStore();
+        var disk = new FakeDiskReader { Usage = new DiskUsage(1000, 500) };
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1");
+        return (Build.Service(store, catalog, disk), store, disk, root);
+    }
+
+    [Fact]
+    public void Scanner_fails_when_the_deadline_expires_after_the_last_file()
+    {
+        using var root = new TempFolder();
+        Directory.CreateDirectory(Path.Combine(root.Path, "empty-trailing-dir"));
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => FolderScanner.Scan(root.Path, DateTime.UtcNow, cts.Token));
+    }
+
+    [Fact]
+    public async Task Legacy_result_from_another_site_is_ignored_but_old_unlabelled_and_same_site_results_are_used()
+    {
+        var (svc, store, _, root) = Create();
+        using var _r = root;
+
+        store.Items["UmbracoLogsFolderSizeHealthCheck"] = new FolderSizeResult { SizeInBytes = 9, SiteKey = "other-site", CalculatedAt = DateTime.UtcNow };
+        Assert.Null(await svc.GetLatestAsync(StatsTargetKeys.UmbracoLogs));
+
+        store.Items["UmbracoLogsFolderSizeHealthCheck"] = new FolderSizeResult { SizeInBytes = 8, SiteKey = "site1", CalculatedAt = DateTime.UtcNow };
+        Assert.Equal(8, (await svc.GetLatestAsync(StatsTargetKeys.UmbracoLogs))!.SizeInBytes);
+
+        store.Items["UmbracoLogsFolderSizeHealthCheck"] = new FolderSizeResult { SizeInBytes = 7, CalculatedAt = DateTime.UtcNow };
+        Assert.Equal(7, (await svc.GetLatestAsync(StatsTargetKeys.UmbracoLogs))!.SizeInBytes);
+    }
+
+    [Fact]
+    public async Task Failed_quota_read_replaces_the_previous_stored_reading_with_an_error()
+    {
+        var (svc, store, disk, root) = Create();
+        using var _r = root;
+
+        await svc.MeasureAsync(StatsTargetKeys.HomeDisk);
+        Assert.True(store.Items["stats:shared:site1:home-disk"].Success);
+
+        disk.Usage = null;
+        var failed = await svc.MeasureAsync(StatsTargetKeys.HomeDisk);
+
+        Assert.False(failed.Success);
+        Assert.False(store.Items["stats:shared:site1:home-disk"].Success);
+    }
+
+    [Fact]
+    public async Task Record_during_a_running_scan_is_not_overwritten_by_the_older_scan_result()
+    {
+        var (svc, store, _, root) = Create();
+        using var _r = root;
+        root.AddFile("umbraco/Logs/a.txt", 100);
+        var scanStarted = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
+        svc.Scanner = (_, now, _) =>
+        {
+            scanStarted.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+            return new FolderSizeResult { SizeInBytes = 100, FileCount = 1, CalculatedAt = now };
+        };
+
+        var scan = svc.MeasureAsync(StatsTargetKeys.UmbracoLogs);
+        Assert.True(scanStarted.Wait(TimeSpan.FromSeconds(10)));
+
+        // clean-up deletes the files and publishes the smaller result while the scan is still counting
+        await svc.RecordAsync(StatsTargetKeys.UmbracoLogs, new FolderSizeResult { SizeInBytes = 10, FileCount = 0, CalculatedAt = DateTime.UtcNow });
+        release.Set();
+        var result = await scan;
+
+        Assert.Equal(10, store.Items["stats:shared:site1:umbraco-logs"].SizeInBytes);
+        Assert.Equal(10, result.SizeInBytes);
+    }
+}
