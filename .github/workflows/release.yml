@@ -98,8 +98,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-    env:
-      MYGET_API_KEY: ${{ secrets.MYGET_API_KEY }}
     steps:
     - uses: actions/checkout@v5
       with:

@@ -4,7 +4,7 @@
     <File Path=".github/workflows/ci.yml" />
     <File Path="README.md" />
   </Folder>
-  <Project Path="src\Umbraco.Community.Cloud.HealthChecks\Umbraco.Community.Cloud.HealthChecks.csproj" />
-  <Project Path="src\Umbraco.Community.Cloud.HealthChecks.DemoSite\Umbraco.Community.Cloud.HealthChecks.DemoSite.csproj" />
-  <Project Path="tests\Umbraco.Community.Cloud.HealthChecks.Tests\Umbraco.Community.Cloud.HealthChecks.Tests.csproj" />
+  <Project Path="src/Umbraco.Community.Cloud.HealthChecks/Umbraco.Community.Cloud.HealthChecks.csproj" />
+  <Project Path="src/Umbraco.Community.Cloud.HealthChecks.DemoSite/Umbraco.Community.Cloud.HealthChecks.DemoSite.csproj" />
+  <Project Path="tests/Umbraco.Community.Cloud.HealthChecks.Tests/Umbraco.Community.Cloud.HealthChecks.Tests.csproj" />
 </Solution>
