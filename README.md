@@ -13,7 +13,7 @@
   </a>
 </p>
 
-A package that provides health checks for Umbraco Cloud environments, helping you monitor critical system resources and storage usage.
+Health checks for disk and folder usage on Umbraco Cloud, Azure Web Apps, and VMs or containers, plus a small API so other packages can reuse the measurements.
 
 > For full package documentation including features, installation, usage, and configuration, see the [Package README](src/Umbraco.Community.Cloud.HealthChecks/README.md).
 
