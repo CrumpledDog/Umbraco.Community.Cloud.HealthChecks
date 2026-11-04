@@ -384,6 +384,36 @@ jobs:
           dotnet validate package local "$pkg"
         done
 
+    # A run that fails after packages were pushed (or a branch that advances during the run) can leave a
+    # version on the feed that was built from a different commit. A retry can compute the same version from a
+    # newer commit, and --skip-duplicate would keep the old packages while semantic-release tags the new commit.
+    # Refuse that: if the version already exists on GitHub Packages it must have been built from this commit.
+    - name: Reject an existing package version built from a different commit
+      if: ${{ needs.setup.outputs.new_release_published == 'true' }}
+      env:
+        GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        for pkg in nuget-packages/*.nupkg; do
+          nuspec=$(unzip -p "$pkg" '*.nuspec')
+          id=$(echo "$nuspec" | sed -n 's:.*<id>\(.*\)</id>.*:\1:p' | head -1 | tr '[:upper:]' '[:lower:]')
+          version=$(echo "$nuspec" | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -1 | tr '[:upper:]' '[:lower:]')
+          status=$(curl -s -o existing.nupkg -w '%{http_code}' -u "USERNAME:$GITHUB_PACKAGES_TOKEN" "https://nuget.pkg.github.com/CrumpledDog/download/$id/$version/$id.$version.nupkg")
+          if [ "$status" = "404" ]; then
+            echo "$id $version is not on GitHub Packages yet"
+          elif [ "$status" = "200" ]; then
+            existing_commit=$(unzip -p existing.nupkg '*.nuspec' | sed -n 's:.*<repository [^>]*commit="\([0-9a-f]*\)".*:\1:p' | head -1)
+            if [ "$existing_commit" != "$GITHUB_SHA" ]; then
+              echo "::error::$id $version is already on GitHub Packages, built from '$existing_commit' rather than $GITHUB_SHA. Refusing to publish and tag a different commit under the same version. Delete that package version (or release a new version) and re-run."
+              exit 1
+            fi
+            echo "$id $version already published from this commit, nothing to reconcile"
+          else
+            echo "::error::Could not check whether $id $version exists on GitHub Packages (HTTP $status)"
+            exit 1
+          fi
+          rm -f existing.nupkg
+        done
+
     - name: Add GitHub Packages Source
       if: ${{ needs.setup.outputs.new_release_published == 'true' }}
       run: dotnet nuget add source --username USERNAME --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/CrumpledDog/index.json"
