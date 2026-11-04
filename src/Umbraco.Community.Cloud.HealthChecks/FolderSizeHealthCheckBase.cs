@@ -3,6 +3,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
 using Umbraco.Community.Cloud.HealthChecks.Services;
+using Umbraco.Community.Cloud.HealthChecks.Stats;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -13,6 +14,8 @@ namespace Umbraco.Community.Cloud.HealthChecks
     {
         private readonly IHealthCheckResultStore _store;
         private readonly CloudHealthChecksOptions _options;
+        private readonly IStatsService? _stats;
+        private readonly IStatsThresholds? _thresholds;
 
         protected FolderSizeHealthCheckBase(
             IHealthCheckResultStore store,
@@ -21,6 +24,29 @@ namespace Umbraco.Community.Cloud.HealthChecks
             _store = store;
             _options = options.Value;
         }
+
+        /// <summary>
+        /// Reads results through the stats service (per server, per site) and evaluates them with the shared thresholds.
+        /// Requires <see cref="StatsTargetKey"/>.
+        /// </summary>
+        protected FolderSizeHealthCheckBase(
+            IHealthCheckResultStore store,
+            IOptions<CloudHealthChecksOptions> options,
+            IStatsService stats,
+            IStatsThresholds thresholds)
+            : this(store, options)
+        {
+            _stats = stats;
+            _thresholds = thresholds;
+        }
+
+        /// <summary>
+        /// The stats target (see <see cref="StatsTargetKeys"/>) this check reports on. When null the check reads the legacy
+        /// per health check type result from the store.
+        /// </summary>
+        protected virtual string? StatsTargetKey => null;
+
+        private bool UsesStats => _stats != null && _thresholds != null && !string.IsNullOrEmpty(StatsTargetKey);
         /// <summary>
         /// Gets the path to the folder to check
         /// </summary>
@@ -113,7 +139,9 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 FolderSizeResult? cachedResult = null;
                 if (_options.BackgroundScan.Enabled)
                 {
-                    cachedResult = await _store.GetAsync(GetType().Name);
+                    cachedResult = UsesStats
+                        ? await _stats!.GetLatestAsync(StatsTargetKey!)
+                        : await _store.GetAsync(GetType().Name);
                 }
 
                 long sizeInBytes;
@@ -161,7 +189,14 @@ namespace Umbraco.Community.Cloud.HealthChecks
                             CalculatedAt = calculatedAt
                         };
 
-                        await _store.StoreAsync(GetType().Name, liveScanResult);
+                        if (UsesStats)
+                        {
+                            await _stats!.RecordAsync(StatsTargetKey!, liveScanResult);
+                        }
+                        else
+                        {
+                            await _store.StoreAsync(GetType().Name, liveScanResult);
+                        }
                     }
                 }
 
@@ -206,35 +241,59 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 StatusResultType resultType;
                 var warnings = new List<string>();
 
-                // Check size thresholds
-                if (sizeInMb >= ErrorThresholdMb)
+                if (UsesStats)
                 {
-                    resultType = StatusResultType.Error;
-                    warnings.Add($"Exceeds error threshold of {ErrorThresholdMb} MB");
-                }
-                else if (sizeInMb >= WarningThresholdMb)
-                {
-                    resultType = StatusResultType.Warning;
-                    warnings.Add($"Exceeds warning threshold of {WarningThresholdMb} MB");
+                    // Shared evaluation (same thresholds the public API exposes)
+                    var evaluation = _thresholds!.Evaluate(
+                        StatsTargetKey!,
+                        new FolderSizeResult
+                        {
+                            SizeInBytes = sizeInBytes,
+                            FileCount = fileCount,
+                            OldestFileLastWriteTime = oldestFileLastWriteTime,
+                            CalculatedAt = calculatedAt
+                        });
+
+                    resultType = evaluation.Level switch
+                    {
+                        ThresholdLevel.Error => StatusResultType.Error,
+                        ThresholdLevel.Warning => StatusResultType.Warning,
+                        _ => StatusResultType.Success
+                    };
+                    warnings.AddRange(evaluation.Reasons);
                 }
                 else
                 {
-                    resultType = StatusResultType.Success;
-                }
-
-                // Check file age thresholds
-                if (FileAgeErrorThresholdDays > 0 && oldestFileAge >= FileAgeErrorThresholdDays)
-                {
-                    resultType = StatusResultType.Error;
-                    warnings.Add($"Oldest file age ({oldestFileAge:F0} days) exceeds error threshold of {FileAgeErrorThresholdDays} days");
-                }
-                else if (FileAgeWarningThresholdDays > 0 && oldestFileAge >= FileAgeWarningThresholdDays)
-                {
-                    if (resultType != StatusResultType.Error)
+                    // Legacy path (no stats target): check size thresholds
+                    if (sizeInMb >= ErrorThresholdMb)
+                    {
+                        resultType = StatusResultType.Error;
+                        warnings.Add($"Exceeds error threshold of {ErrorThresholdMb} MB");
+                    }
+                    else if (sizeInMb >= WarningThresholdMb)
                     {
                         resultType = StatusResultType.Warning;
+                        warnings.Add($"Exceeds warning threshold of {WarningThresholdMb} MB");
                     }
-                    warnings.Add($"Oldest file age ({oldestFileAge:F0} days) exceeds warning threshold of {FileAgeWarningThresholdDays} days");
+                    else
+                    {
+                        resultType = StatusResultType.Success;
+                    }
+
+                    // Check file age thresholds
+                    if (FileAgeErrorThresholdDays > 0 && oldestFileAge >= FileAgeErrorThresholdDays)
+                    {
+                        resultType = StatusResultType.Error;
+                        warnings.Add($"Oldest file age ({oldestFileAge:F0} days) exceeds error threshold of {FileAgeErrorThresholdDays} days");
+                    }
+                    else if (FileAgeWarningThresholdDays > 0 && oldestFileAge >= FileAgeWarningThresholdDays)
+                    {
+                        if (resultType != StatusResultType.Error)
+                        {
+                            resultType = StatusResultType.Warning;
+                        }
+                        warnings.Add($"Oldest file age ({oldestFileAge:F0} days) exceeds warning threshold of {FileAgeWarningThresholdDays} days");
+                    }
                 }
 
                 // Build final message

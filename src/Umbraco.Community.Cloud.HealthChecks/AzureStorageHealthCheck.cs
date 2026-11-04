@@ -1,8 +1,8 @@
-using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
+using Umbraco.Community.Cloud.HealthChecks.Stats;
 
 namespace Umbraco.Community.Cloud.HealthChecks
 {
@@ -18,11 +18,14 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private const string LocalTempDirectory = @"D:\local";
         private readonly CloudHealthChecksOptions _options;
         private readonly IHostEnvironment _hostEnvironment;
+        private readonly IDiskUsageReader _diskUsageReader;
 
         public AzureStorageHealthCheck(
             IOptions<CloudHealthChecksOptions> options,
-            IHostEnvironment hostEnvironment)
+            IHostEnvironment hostEnvironment,
+            IDiskUsageReader diskUsageReader)
         {
+            _diskUsageReader = diskUsageReader;
             _options = options.Value;
             _hostEnvironment = hostEnvironment;
         }
@@ -126,7 +129,10 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
 
                 // Get actual disk space using Windows API (same as Kudu)
-                GetDiskFreeSpace(directory, out ulong freeBytes, out ulong totalBytes);
+                var usage = _diskUsageReader.Read(directory)
+                    ?? throw new InvalidOperationException("disk usage could not be read");
+                var totalBytes = (ulong)usage.TotalBytes;
+                var freeBytes = (ulong)usage.FreeBytes;
 
                 var totalMb = totalBytes / (1024.0 * 1024.0);
                 var freeMb = freeBytes / (1024.0 * 1024.0);
@@ -172,17 +178,5 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 });
             }
         }
-
-        private static void GetDiskFreeSpace(string path, out ulong freeBytes, out ulong totalBytes)
-        {
-            if (!GetDiskFreeSpaceEx(path, out freeBytes, out totalBytes, out ulong diskFreeBytes))
-            {
-                throw new Win32Exception();
-            }
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool GetDiskFreeSpaceEx(string path, out ulong freeBytes, out ulong totalBytes, out ulong diskFreeBytes);
     }
 }

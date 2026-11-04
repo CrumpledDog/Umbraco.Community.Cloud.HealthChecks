@@ -51,10 +51,13 @@ You can configure the thresholds for each health check in your `appsettings.json
   Enable background folder size scanning. When enabled, folders are scanned periodically in the background and results are cached using distributed cache.
 
 - **ScanIntervalHours** (default: `6.0`)  
-  How often to scan folders in hours. The background job runs on the elected SchedulingPublisher server in load-balanced environments.
+  How often to scan folders in hours. Since 1.4.0 the job runs on every server role; shared folders are scanned once per site per interval.
 
 - **CacheExpirationHours** (default: `720.0`)  
   How long to cache scan results in hours (30 days). Acts as a safety net if background scanning is disabled. Since the background job updates the cache regularly, expiration is set to a very long duration to prevent expensive live scans.
+
+- **ScanTimeLimitMinutes** (default: `15.0`)  
+  Time limit for scanning a single folder. If a scan overruns, it is abandoned and an error result ("took longer than the limit, will retry") is recorded instead of a partial number; the next interval retries. A caller of `IStatsService.MeasureAsync` can pass its own limit.
 
 - **StorageMode** (default: `"KeyValue"`)  
   Storage mode for health check results. Options:
