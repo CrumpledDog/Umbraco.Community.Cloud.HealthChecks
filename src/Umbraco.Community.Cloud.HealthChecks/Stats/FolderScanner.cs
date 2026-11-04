@@ -1,3 +1,5 @@
+using System.IO.Enumeration;
+
 namespace Umbraco.Community.Cloud.HealthChecks.Stats;
 
 /// <summary>Single-pass folder traversal (size, file count, oldest file) that honours a cancellation token.</summary>
@@ -17,32 +19,31 @@ internal static class FolderScanner
             ReturnSpecialDirectories = false
         };
 
-        foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", enumerationOptions))
+        // Every entry, directories included, passes the predicate, so cancellation is observed even in a large tree of empty folders
+        var files = new FileSystemEnumerable<(long Length, DateTime LastWrite)>(
+            path,
+            (ref FileSystemEntry entry) => (entry.Length, entry.LastWriteTimeUtc.UtcDateTime.ToLocalTime()),
+            enumerationOptions)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
+            ShouldIncludePredicate = (ref FileSystemEntry entry) =>
             {
-                totalSize += file.Length;
-                fileCount++;
-
-                var written = file.LastWriteTime;
-                if (oldest == null || written < oldest)
-                {
-                    oldest = written;
-                }
+                cancellationToken.ThrowIfCancellationRequested();
+                return !entry.IsDirectory;
             }
-            catch (UnauthorizedAccessException)
+        };
+
+        foreach (var file in files)
+        {
+            totalSize += file.Length;
+            fileCount++;
+
+            if (oldest == null || file.LastWrite < oldest)
             {
-                // Skip files we can't access
-            }
-            catch (FileNotFoundException)
-            {
-                // Deleted during enumeration
+                oldest = file.LastWrite;
             }
         }
 
-        // The deadline may expire while trailing empty/skipped directories are enumerated: never report that as success
+        // The deadline may expire during the last entries: never report that as success
         cancellationToken.ThrowIfCancellationRequested();
 
         return new FolderSizeResult

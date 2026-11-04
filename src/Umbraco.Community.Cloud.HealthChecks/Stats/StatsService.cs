@@ -91,6 +91,7 @@ public sealed class StatsService : IStatsService
     public async Task<FolderSizeResult?> GetLatestAsync(string targetKey, ServerKey? server = null, CancellationToken cancellationToken = default)
     {
         var target = _catalog.Find(targetKey) ?? throw new ArgumentException($"Unknown stats target '{targetKey}'.", nameof(targetKey));
+        cancellationToken.ThrowIfCancellationRequested();
         var requested = server ?? _catalog.CurrentServer;
         var isCurrent = IsCurrent(target, requested);
 
@@ -99,13 +100,13 @@ public sealed class StatsService : IStatsService
             return target.AppliesToThisHost ? ReadDisk(target) : null;
         }
 
-        var result = await _store.GetAsync(StoreName(target, requested));
+        var result = await _store.GetAsync(StoreName(target, requested)).WaitAsync(cancellationToken);
 
         if (result == null && isCurrent && target.Scope == StatsScope.Shared && LegacyNames.TryGetValue(target.Key, out var legacy))
         {
             // Written by 1.3.x (one result per health check type). Newer instances also write it for every site sharing the
             // store, so ignore a result that names a different site; results without site metadata are genuinely old.
-            var legacyResult = await _store.GetAsync(legacy);
+            var legacyResult = await _store.GetAsync(legacy).WaitAsync(cancellationToken);
             if (legacyResult != null && (legacyResult.SiteKey == null || legacyResult.SiteKey == requested.SiteKey))
             {
                 result = legacyResult;
@@ -119,6 +120,8 @@ public sealed class StatsService : IStatsService
     public async Task<FolderSizeResult> MeasureAsync(string targetKey, TimeSpan? timeLimit = null, CancellationToken cancellationToken = default)
     {
         var target = _catalog.Find(targetKey) ?? throw new ArgumentException($"Unknown stats target '{targetKey}'.", nameof(targetKey));
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (!target.AppliesToThisHost)
         {
@@ -209,6 +212,7 @@ public sealed class StatsService : IStatsService
     public async Task RecordAsync(string targetKey, FolderSizeResult result, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(result);
+        cancellationToken.ThrowIfCancellationRequested();
 
         var target = _catalog.Find(targetKey) ?? throw new ArgumentException($"Unknown stats target '{targetKey}'.", nameof(targetKey));
 
@@ -332,7 +336,7 @@ public sealed class StatsService : IStatsService
         result.MachineId = _catalog.CurrentServer.MachineId;
         result.SiteKey = _catalog.CurrentServer.SiteKey;
 
-        if (overwriteDisk || result.DiskTotalBytes == null)
+        if (overwriteDisk || result.DiskTotalBytes == null || result.DiskFreeBytes == null)
         {
             var usage = _disk.Read(target.Path);
             if (usage != null)

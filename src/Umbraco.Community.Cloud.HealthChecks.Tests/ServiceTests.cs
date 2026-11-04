@@ -442,3 +442,85 @@ public class CrossServerPublicationTests
         Assert.Equal(100, store.Items["stats:shared:site1:umbraco-logs"].SizeInBytes);
     }
 }
+
+public class SecondReviewFixTests
+{
+    private const long Gb = 1024L * 1024 * 1024;
+
+    [Fact]
+    public void Remote_nuget_result_is_judged_against_its_own_quota_not_this_hosts()
+    {
+        var root = Path.GetTempPath();
+        var catalog = new StatsTargetCatalog(root, new CloudHealthChecksOptions(), "m", Build.Azure(), HostingPlatform.AzureWebApp, _ => true);
+        // This host has a 100 GB quota; the measured site has 6 GB (error threshold 3 GB)
+        var thresholds = new StatsThresholds(Microsoft.Extensions.Options.Options.Create(new CloudHealthChecksOptions()), catalog, new FakeDiskReader { Usage = new DiskUsage(100 * Gb, 0) });
+
+        var remote = new FolderSizeResult { SizeInBytes = 4 * Gb, DiskTotalBytes = 6 * Gb, DiskFreeBytes = Gb };
+        var noQuota = new FolderSizeResult { SizeInBytes = 4 * Gb };
+
+        Assert.Equal(ThresholdLevel.Error, thresholds.Evaluate(StatsTargetKeys.NuGetCache, remote).Level);
+        Assert.Equal(3072, thresholds.Resolve(StatsTargetKeys.NuGetCache, 6 * Gb).SizeErrorMb);
+        // Without quota metadata the local quota (100 GB -> 50 GB error) applies
+        Assert.Equal(ThresholdLevel.Ok, thresholds.Evaluate(StatsTargetKeys.NuGetCache, noQuota).Level);
+    }
+
+    [Fact]
+    public async Task Cancelled_token_stops_measure_get_and_record_before_any_work()
+    {
+        using var root = new TempFolder();
+        var store = new InMemoryResultStore();
+        var disk = new FakeDiskReader { Usage = new DiskUsage(1000, 500) };
+        var svc = Build.Service(store, Build.TestModeCatalog(root.Path, "m1", "site1"), disk);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => svc.MeasureAsync(StatsTargetKeys.HomeDisk, null, cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => svc.GetLatestAsync(StatsTargetKeys.UmbracoLogs, null, cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => svc.RecordAsync(StatsTargetKeys.UmbracoLogs, new FolderSizeResult(), cts.Token));
+        Assert.Empty(store.Items);
+    }
+
+    [Fact]
+    public async Task Record_fills_the_disk_pair_when_either_value_is_missing()
+    {
+        using var root = new TempFolder();
+        var store = new InMemoryResultStore();
+        var svc = Build.Service(store, Build.TestModeCatalog(root.Path, "m1", "site1"), new FakeDiskReader { Usage = new DiskUsage(1000, 250) });
+
+        await svc.RecordAsync(StatsTargetKeys.UmbracoLogs, new FolderSizeResult { DiskTotalBytes = 1000 });
+
+        Assert.Equal(250, store.Items["stats:shared:site1:umbraco-logs"].DiskFreeBytes);
+        Assert.Equal(75, store.Items["stats:shared:site1:umbraco-logs"].DiskUsedPercent);
+    }
+
+    [Fact]
+    public void Scan_observes_cancellation_while_walking_only_directories()
+    {
+        using var root = new TempFolder();
+        for (var i = 0; i < 20; i++)
+        {
+            Directory.CreateDirectory(Path.Combine(root.Path, "d" + i, "inner"));
+        }
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => FolderScanner.Scan(root.Path, DateTime.UtcNow, cts.Token));
+    }
+
+    [Fact]
+    public void Scan_counts_files_only_and_reports_the_oldest()
+    {
+        using var root = new TempFolder();
+        var old = new DateTime(2019, 5, 5, 0, 0, 0, DateTimeKind.Local);
+        root.AddFile("a/b/old.txt", 30, old);
+        root.AddFile("new.txt", 20);
+        Directory.CreateDirectory(Path.Combine(root.Path, "empty"));
+
+        var r = FolderScanner.Scan(root.Path, DateTime.UtcNow, CancellationToken.None);
+
+        Assert.Equal(50, r.SizeInBytes);
+        Assert.Equal(2, r.FileCount);
+        Assert.Equal(old, r.OldestFileLastWriteTime);
+    }
+}

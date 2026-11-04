@@ -9,7 +9,12 @@ public interface IStatsThresholds
     /// The thresholds for a target: configured values, or for the NuGet cache the adaptive defaults derived from the home quota.
     /// Unknown keys resolve to no thresholds.
     /// </summary>
-    TargetThresholds Resolve(string targetKey);
+    /// <param name="targetKey">The target.</param>
+    /// <param name="measuredDiskTotalBytes">
+    /// The quota of the site the measurement came from (<see cref="FolderSizeResult.DiskTotalBytes"/>). Adaptive thresholds derive
+    /// from it so a remote server's result is judged against its own quota, not this host's; when null, this host's quota is read.
+    /// </param>
+    TargetThresholds Resolve(string targetKey, long? measuredDiskTotalBytes = null);
 
     /// <summary>Evaluates a measurement against the target's thresholds (size, oldest file age, disk usage percentage).</summary>
     /// <param name="targetKey">The target the result belongs to.</param>
@@ -36,7 +41,7 @@ public sealed class StatsThresholds : IStatsThresholds
     }
 
     /// <inheritdoc />
-    public TargetThresholds Resolve(string targetKey)
+    public TargetThresholds Resolve(string targetKey, long? measuredDiskTotalBytes = null)
     {
         switch (targetKey.ToLowerInvariant())
         {
@@ -51,7 +56,7 @@ public sealed class StatsThresholds : IStatsThresholds
                     null);
 
             case StatsTargetKeys.NuGetCache:
-                var error = _options.NuGetCache.ErrorThresholdMb ?? CalculateNuGetError();
+                var error = _options.NuGetCache.ErrorThresholdMb ?? CalculateNuGetError(measuredDiskTotalBytes);
                 var warning = _options.NuGetCache.WarningThresholdMb ?? CalculateNuGetWarning(error);
                 return new TargetThresholds(warning, error, null, null, null, null);
 
@@ -87,7 +92,7 @@ public sealed class StatsThresholds : IStatsThresholds
             return new ThresholdEvaluation(ThresholdLevel.Error, new[] { $"Measurement failed: {result.ErrorMessage}" });
         }
 
-        var t = Resolve(targetKey);
+        var t = Resolve(targetKey, result.DiskTotalBytes);
         var level = ThresholdLevel.None;
         var reasons = new List<string>();
 
@@ -172,10 +177,15 @@ public sealed class StatsThresholds : IStatsThresholds
     }
 
     /// <summary>50% of the home quota rounded to the nearest GB; 3 GB when the quota cannot be read.</summary>
-    private long CalculateNuGetError()
+    private long CalculateNuGetError(long? measuredTotalBytes)
     {
         try
         {
+            if (measuredTotalBytes is > 0)
+            {
+                return (long)(Math.Round(measuredTotalBytes.Value / (1024.0 * 1024.0) * 0.5 / 1024.0) * 1024.0);
+            }
+
             var homePath = _options.LocalTestMode
                 ? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
                 : _catalog.Find(StatsTargetKeys.HomeDisk)?.Path;
