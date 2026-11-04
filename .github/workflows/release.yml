@@ -94,7 +94,6 @@ jobs:
             @semantic-release/exec
             @semantic-release/commit-analyzer
             @semantic-release/release-notes-generator
-            @semantic-release/github
             conventional-changelog-conventionalcommits
 
       - name: Check Release
@@ -129,7 +128,7 @@ jobs:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
     - name: Setup Node.js environment
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v6
       with:
         node-version: 'lts/*'
         cache: 'npm'
