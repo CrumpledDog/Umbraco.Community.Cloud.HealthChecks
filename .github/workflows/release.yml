@@ -49,11 +49,12 @@ jobs:
 
       - name: Calculate Branch Slug
         id: calculate-branch
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
         run: |
-          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
 
           if [[ "$BRANCH_NAME" == hotfix/* ]] || [[ "$BRANCH_NAME" == feature/* ]]; then
-            BRANCH_SLUG=$(echo "$BRANCH_NAME" | sed 's/feature\//ft-/g; s/hotfix\//hf-/g; s/\//-/g' | cut -c 1-12 | sed 's/-$//')
+            BRANCH_SLUG=$(echo "$BRANCH_NAME" | sed 's/feature\//ft-/g; s/hotfix\//hf-/g; s/\//-/g' | sed 's/[^A-Za-z0-9-]/-/g' | cut -c 1-12 | sed 's/-$//')
             PRERELEASE_ID="00-${BRANCH_SLUG}"
             echo "prerelease_id=$PRERELEASE_ID" >> $GITHUB_OUTPUT
           else
@@ -62,9 +63,10 @@ jobs:
 
       - name: Update .releaserc for current branch
         if: ${{ steps.calculate-branch.outputs.prerelease_id != '' }}
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          PRERELEASE_ID: ${{ steps.calculate-branch.outputs.prerelease_id }}
         run: |
-          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
-          PRERELEASE_ID="${{ steps.calculate-branch.outputs.prerelease_id }}"
           jq --arg name "$BRANCH_NAME" --arg prerelease "$PRERELEASE_ID" \
             '.branches += [{"name": $name, "prerelease": $prerelease}]' \
             .releaserc > .releaserc.tmp && mv .releaserc.tmp .releaserc
@@ -350,6 +352,18 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
+    - name: Verify branch has not advanced
+      env:
+        BRANCH_NAME: ${{ github.ref_name }}
+      run: |
+        git fetch origin "$BRANCH_NAME"
+        REMOTE_SHA=$(git rev-parse "origin/$BRANCH_NAME")
+        if [ "$REMOTE_SHA" != "$GITHUB_SHA" ]; then
+          echo "::error::$BRANCH_NAME has advanced ($GITHUB_SHA -> $REMOTE_SHA) since this run started. Refusing to publish: the packages were built from $GITHUB_SHA. Re-run the workflow on the new commit."
+          exit 1
+        fi
+
+
     - name: Download NuGet Packages
       uses: actions/download-artifact@v8
       with:
@@ -420,23 +434,27 @@ jobs:
     - name: Fetch all tags
       run: git fetch --force --tags
 
-    # actions/checkout above pinned HEAD to the branch tip at whatever moment this job started -
-    # by the time this runs, the setup/build/test/publish jobs before it have taken several
-    # minutes, and any commit pushed to the branch in that window makes semantic-release's own
-    # "is the local branch behind the remote" guard correctly (but unhelpfully) refuse to publish.
-    # Re-pointing HEAD at the branch's current remote tip right before the real Semantic Release
-    # step closes that window. Must run before the .releaserc patch below, since reset --hard
-    # would otherwise discard that uncommitted change.
-    - name: Sync local branch with remote tip
+    # Release exactly the commit that was built, tested and published. If the branch has moved on since this
+    # run started, fail rather than letting semantic-release analyse and tag commits that were never built
+    # (a newer feat or breaking commit could also change the computed version).
+    - name: Verify branch has not advanced
+      env:
+        BRANCH_NAME: ${{ github.ref_name }}
       run: |
-        git fetch origin "${{ github.ref_name }}"
-        git reset --hard "origin/${{ github.ref_name }}"
+        git fetch origin "$BRANCH_NAME"
+        REMOTE_SHA=$(git rev-parse "origin/$BRANCH_NAME")
+        if [ "$REMOTE_SHA" != "$GITHUB_SHA" ]; then
+          echo "::error::$BRANCH_NAME has advanced ($GITHUB_SHA -> $REMOTE_SHA) since this run started. Refusing to publish: the packages were built from $GITHUB_SHA. Re-run the workflow on the new commit."
+          exit 1
+        fi
+
 
     - name: Update .releaserc for current branch
       if: ${{ needs.setup.outputs.prerelease_id != '' }}
+      env:
+        BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        PRERELEASE_ID: ${{ needs.setup.outputs.prerelease_id }}
       run: |
-        BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
-        PRERELEASE_ID="${{ needs.setup.outputs.prerelease_id }}"
         jq --arg name "$BRANCH_NAME" --arg prerelease "$PRERELEASE_ID" \
           '.branches += [{"name": $name, "prerelease": $prerelease}]' \
           .releaserc > .releaserc.tmp && mv .releaserc.tmp .releaserc
@@ -459,8 +477,10 @@ jobs:
     # simpler, and it's the same changelog semantic-release already computed for this version.
     - name: Generate Release Notes Body
       if: ${{ steps.semantic.outputs.new_release_published == 'true' && github.event.inputs.create_github_release != 'false' }}
+      env:
+        BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+        RELEASE_NOTES: ${{ steps.semantic.outputs.new_release_notes }}
       run: |
-        BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
 
         if [[ "$BRANCH_NAME" == hotfix/* ]] || [[ "$BRANCH_NAME" == feature/* ]]; then
           echo "## ⚠️ Test Release from \`$BRANCH_NAME\`" > release_body.md
@@ -506,7 +526,7 @@ jobs:
         EOF
         fi
 
-        printf '\n%s\n' "${{ steps.semantic.outputs.new_release_notes }}" | sed '/^#\+ \[/d' >> release_body.md
+        printf '\n%s\n' "$RELEASE_NOTES" | sed '/^#\+ \[/d' >> release_body.md
 
     - name: Update GitHub Release with Custom Notes
       if: ${{ steps.semantic.outputs.new_release_published == 'true' && github.event.inputs.create_github_release != 'false' }}

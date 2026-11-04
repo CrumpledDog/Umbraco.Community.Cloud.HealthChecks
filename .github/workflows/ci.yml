@@ -69,8 +69,9 @@ jobs:
 
       - name: Calculate Branch Slug
         id: calculate-branch
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
         run: |
-          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
           echo "Current branch: $BRANCH_NAME"
 
           if [[ "$BRANCH_NAME" == hotfix/* ]] || [[ "$BRANCH_NAME" == feature/* ]]; then
@@ -79,7 +80,7 @@ jobs:
             # Truncate to max 15 chars total to keep NuGet paths short
             # Replace feature->ft and hotfix->hf to save more space
             # Trim trailing hyphen if present after truncation
-            BRANCH_SLUG=$(echo "$BRANCH_NAME" | sed 's/feature\//ft-/g; s/hotfix\//hf-/g; s/\//-/g' | cut -c 1-12 | sed 's/-$//')
+            BRANCH_SLUG=$(echo "$BRANCH_NAME" | sed 's/feature\//ft-/g; s/hotfix\//hf-/g; s/\//-/g' | sed 's/[^A-Za-z0-9-]/-/g' | cut -c 1-12 | sed 's/-$//')
             PRERELEASE_ID="00-${BRANCH_SLUG}"
             echo "Branch slug: $BRANCH_SLUG"
             echo "Prerelease ID: $PRERELEASE_ID"
@@ -91,9 +92,10 @@ jobs:
 
       - name: Update .releaserc for current branch
         if: ${{ steps.calculate-branch.outputs.prerelease_id != '' }}
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          PRERELEASE_ID: ${{ steps.calculate-branch.outputs.prerelease_id }}
         run: |
-          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
-          PRERELEASE_ID="${{ steps.calculate-branch.outputs.prerelease_id }}"
 
           jq --arg name "$BRANCH_NAME" --arg prerelease "$PRERELEASE_ID" \
             '.branches += [{"name": $name, "prerelease": $prerelease}]' \

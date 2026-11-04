@@ -15,8 +15,10 @@ if [ -z "$SEMVER" ]; then
   exit 1
 fi
 
-# Extract version from release branch (e.g., release/v2 -> v2)
-VERSION_SUFFIX=$(echo "${GITHUB_REF#refs/heads/release/}")
+# Extract version from release branch (e.g., release/v2 or beta/v2 -> v2)
+BRANCH_REF="${GITHUB_REF#refs/heads/}"
+VERSION_SUFFIX="${BRANCH_REF#release/}"
+VERSION_SUFFIX="${VERSION_SUFFIX#beta/}"
 DEVELOP_BRANCH="develop/$VERSION_SUFFIX"
 
 echo "Merging ${GITHUB_REF#refs/heads/} into $DEVELOP_BRANCH after release $SEMVER"
