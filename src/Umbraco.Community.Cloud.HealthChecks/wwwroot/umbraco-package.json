@@ -1,0 +1,7 @@
+{
+  "id": "Umbraco.Community.Cloud.HealthChecks",
+  "name": "Umbraco Cloud Health Checks",
+  "version": "0.0.0",
+  "allowTelemetry": true,
+  "extensions": []
+}

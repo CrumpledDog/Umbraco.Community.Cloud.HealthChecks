@@ -1,18 +1,17 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
-    <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
-    <EnableDefaultContentItems>false</EnableDefaultContentItems>
-    <NoWarn>$(NoWarn);NU5118</NoWarn>
-    
+    <!-- No Client: serve wwwroot/umbraco-package.json from App_Plugins so Umbraco discovers the package -->
+    <StaticWebAssetBasePath>App_Plugins/Umbraco.Community.Cloud.HealthChecks</StaticWebAssetBasePath>
+    <NoWarn>$(NoWarn);NU5118;NU1902;NU1903</NoWarn>
+
     <!-- Symbol file configuration -->
     <DebugType>portable</DebugType>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    
+
     <!-- Deterministic build configuration -->
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -23,60 +22,51 @@
     <PackageId>Umbraco.Community.Cloud.HealthChecks</PackageId>
     <Product>Umbraco.Community.Cloud.HealthChecks</Product>
     <Title>Umbraco Cloud Health Checks</Title>
+    <Description>Disk and folder health checks and a measurement API for Umbraco on Umbraco Cloud, Azure Web Apps, VMs and containers</Description>
     <PackageTags>umbraco plugin package umbraco-marketplace cloud health checks</PackageTags>
-    <PackageDescription>Disk and folder health checks and a measurement API for Umbraco on Umbraco Cloud, Azure Web Apps, VMs and containers</PackageDescription>
-    <RepositoryUrl>https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks</RepositoryUrl>
-    <PackageIcon>cloud-healthchecks.png</PackageIcon>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RootNamespace>Umbraco.Community.Cloud.HealthChecks</RootNamespace>
+    <Authors>Crumpled Dog and Umbraco Community</Authors>
     <Company>Crumpled Dog and Umbraco Community</Company>
+    <RepositoryUrl>https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks</PackageProjectUrl>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageVersion>$(PackageVersion)</PackageVersion>
     <Version>$(PackageVersion)</Version>
     <InformationalVersion>$(PackageVersion)</InformationalVersion>
-    <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <Authors>Crumpled Dog and Umbraco Community</Authors>
   </PropertyGroup>
 
+  <!-- Central package management - no versions -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.103" PrivateAssets="All" />
-    <PackageReference Include="Umbraco.Cms.Web.Common" Version="[17.0.0,)" />
+    <PackageReference Include="Umbraco.Cms.Web.Common" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <None Include="../../LICENSE" Pack="true" PackagePath="" />
+    <None Include="../../icons/icon.png" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <!-- appsettings schema for the package's options: packed at the package root and registered with Umbraco via buildTransitive -->
+  <ItemGroup>
+    <Content Remove="appsettings-schema.Umbraco.Community.Cloud.HealthChecks.json" />
+    <Content Include="buildTransitive/**" PackagePath="buildTransitive" />
+    <None Include="appsettings-schema.Umbraco.Community.Cloud.HealthChecks.json" Pack="true" PackagePath="" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Dont include the client folder as part of packaging nuget build -->
-    <Content Remove="Client\**" />
-
-    <!-- However make the Umbraco-package.json included for dotnet pack or nuget package and visible to the solution -->
-    <None Include="Client\public\umbraco-package.json" Pack="false" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <InternalsVisibleTo Include="Umbraco.Community.Cloud.HealthChecks.Tests" />
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Umbraco.Community.Cloud.HealthChecks.Tests</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
     <Folder Include="wwwroot\" />
   </ItemGroup>
 
-  <ItemGroup>
-      <Content Include="buildTransitive\**" PackagePath="buildTransitive" />
-      <Content Include="appsettings-schema.Umbraco.Community.Cloud.HealthChecks.json" PackagePath="" />
-      <Content Include="wwwroot\**" />
-      <Content Include="Views\**\*.cshtml" />
-  </ItemGroup>
 
-  <ItemGroup>
-      <None Update="cloud-healthchecks.png">
-        <Pack>True</Pack>
-        <PackagePath>\</PackagePath>
-      </None>
-      <None Include="..\..\LICENSE">
-        <Pack>True</Pack>
-        <PackagePath>\</PackagePath>
-      </None>
-      <None Include="README.md">
-        <Pack>True</Pack>
-        <PackagePath>\</PackagePath>
-      </None>
-  </ItemGroup>
+  <Import Project="NuGetReadme.targets" />
 
 </Project>

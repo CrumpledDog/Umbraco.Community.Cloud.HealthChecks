@@ -1,6 +1,9 @@
 # Umbraco Cloud Health Checks
 
-![Cloud Health Checks](https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/src/Umbraco.Community.Cloud.HealthChecks/cloud-healthchecks.png)
+![Cloud Health Checks](https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/icons/icon.png)
+
+[![CI](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/actions/workflows/ci.yml/badge.svg)](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/actions/workflows/ci.yml) [![NuGet](https://img.shields.io/nuget/v/Umbraco.Community.Cloud.HealthChecks.svg)](https://www.nuget.org/packages/Umbraco.Community.Cloud.HealthChecks)
+
 
 Health checks that keep an eye on disk and folder usage for Umbraco sites on **Umbraco Cloud**, **Azure Web Apps**, and plain **VMs or containers**: log growth, the NuGet cache and Azure storage quotas, with a small API so other packages can use the same measurements.
 
@@ -196,9 +199,23 @@ For real-time team alerts, combine this package with the [Health Check Slack Not
 
 Both notification methods are especially valuable in Umbraco Cloud environments where storage space is limited and can impact site availability.
 
+## Cleanup scripts
+
+For scripts that address health check warnings (clearing the NuGet cache and Umbraco logs) see the [scripts README](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/blob/HEAD/scripts/README.md).
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/blob/HEAD/CONTRIBUTING.md) for the branching strategy, formatting rules and commit conventions.
+
+```bash
+dotnet build
+dotnet test
+dotnet pack --configuration Release
+```
+
 ## Support
 
-For issues, questions, or feature requests, please visit the [GitHub repository](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks).
+For issues, questions, or feature requests, please use the [GitHub Issues](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/issues) page.
 
 ## Credits
 
@@ -206,4 +223,4 @@ Developed by **Crumpled Dog** and the **Umbraco Community**.
 
 ## License
 
-This project is licensed under the terms specified in the LICENSE file.
+This project is licensed under the terms specified in the [LICENSE](https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/blob/HEAD/LICENSE) file.
