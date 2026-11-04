@@ -53,6 +53,11 @@ namespace Umbraco.Community.Cloud.HealthChecks
         public string? SiteKey { get; set; }
 
         /// <summary>
+        /// Friendly name of the server that produced the result (machine name plus site name).
+        /// </summary>
+        public string? ServerName { get; set; }
+
+        /// <summary>
         /// Quota-aware total size of the disk behind the target, when it could be read.
         /// </summary>
         public long? DiskTotalBytes { get; set; }

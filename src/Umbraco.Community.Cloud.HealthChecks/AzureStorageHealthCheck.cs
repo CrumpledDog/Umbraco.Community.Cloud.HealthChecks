@@ -21,6 +21,9 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private readonly IHostEnvironment _hostEnvironment;
         private readonly IDiskUsageReader _diskUsageReader;
         private readonly IStatsTargetCatalog _catalog;
+        private IStatsServers? _servers;
+        private IStatsService? _stats;
+        private IStatsThresholds? _thresholds;
 
         /// <summary>Kept for compatibility.</summary>
         public AzureStorageHealthCheck(
@@ -34,7 +37,6 @@ namespace Umbraco.Community.Cloud.HealthChecks
         {
         }
 
-        [ActivatorUtilitiesConstructor]
         public AzureStorageHealthCheck(
             IOptions<CloudHealthChecksOptions> options,
             IHostEnvironment hostEnvironment,
@@ -48,12 +50,118 @@ namespace Umbraco.Community.Cloud.HealthChecks
             _hostEnvironment = hostEnvironment;
         }
 
+        /// <summary>Also reports the disks of the other servers (by name) when more than one server is known.</summary>
+        [ActivatorUtilitiesConstructor]
+        public AzureStorageHealthCheck(
+            IOptions<CloudHealthChecksOptions> options,
+            IHostEnvironment hostEnvironment,
+            IDiskUsageReader diskUsageReader,
+            IStatsTargetCatalog catalog,
+            IStatsServers servers,
+            IStatsService stats,
+            IStatsThresholds thresholds)
+            : this(options, hostEnvironment, diskUsageReader, catalog)
+        {
+            _servers = servers;
+            _stats = stats;
+            _thresholds = thresholds;
+        }
+
+        public override async Task<IEnumerable<HealthCheckStatus>> GetStatusAsync()
+        {
+            var results = GetCurrentServerStatuses();
+
+            if (_servers == null || _stats == null || _thresholds == null
+                || !_catalog.Find(StatsTargetKeys.HomeDisk)!.AppliesToThisHost)
+            {
+                return results;
+            }
+
+            try
+            {
+                var servers = await _servers.GetServersAsync();
+                if (servers.Count > 1)
+                {
+                    results.AddRange(await GetOtherServerStatusesAsync(servers));
+                }
+            }
+            catch (Exception ex)
+            {
+                results.Add(new HealthCheckStatus($"Could not read the other servers' storage usage: {ex.Message}")
+                {
+                    ResultType = StatusResultType.Info
+                });
+            }
+
+            return results;
+        }
+
+        private async Task<List<HealthCheckStatus>> GetOtherServerStatusesAsync(IReadOnlyList<StatsServer> servers)
+        {
+            var statuses = new List<HealthCheckStatus>();
+            var current = servers[0];
+            var others = servers.Skip(1).ToList();
+
+            // C:\home is one disk per site; C:\local and the temp drive are per instance
+            var sharedSites = others.Where(s => s.Key.SiteKey != current.Key.SiteKey).GroupBy(s => s.Key.SiteKey)
+                .Select(g => (Label: $"site {g.Key} ({string.Join(", ", g.Select(s => s.DisplayName))})", Server: g.First()));
+            foreach (var (label, server) in sharedSites)
+            {
+                await AddDiskStatusAsync(statuses, label, server, StatsTargetKeys.HomeDisk);
+            }
+
+            foreach (var server in others)
+            {
+                await AddDiskStatusAsync(statuses, server.DisplayName, server, StatsTargetKeys.LocalDisk);
+                await AddDiskStatusAsync(statuses, server.DisplayName, server, StatsTargetKeys.TempDisk);
+            }
+
+            return statuses;
+        }
+
+        private async Task AddDiskStatusAsync(List<HealthCheckStatus> statuses, string label, StatsServer server, string targetKey)
+        {
+            var result = await _stats!.GetLatestAsync(targetKey, server.Key);
+            if (result == null)
+            {
+                return; // the target does not apply to that server, or it has not reported yet
+            }
+
+            var name = _catalog.Find(targetKey)?.DisplayName ?? targetKey;
+            if (!result.Success)
+            {
+                statuses.Add(new HealthCheckStatus($"[{label}] Error checking {name} storage usage: {result.ErrorMessage}")
+                {
+                    ResultType = StatusResultType.Error,
+                    Description = $"Server: {server.DisplayName}"
+                });
+                return;
+            }
+
+            var total = result.DiskTotalBytes.GetValueOrDefault() / (1024.0 * 1024.0);
+            var free = result.DiskFreeBytes.GetValueOrDefault() / (1024.0 * 1024.0);
+            var evaluation = _thresholds!.Evaluate(targetKey, result);
+            var message = $"[{label}] {name} usage: {total:N0} MB total; {free:N0} MB free ({total - free:N0} MB used, {result.DiskUsedPercent:F1}%)";
+            message += evaluation.Reasons.Count > 0 ? " - " + string.Join(". ", evaluation.Reasons) + "." : " - Storage usage is within normal limits.";
+
+            statuses.Add(new HealthCheckStatus(message)
+            {
+                ResultType = evaluation.Level switch
+                {
+                    ThresholdLevel.Error => StatusResultType.Error,
+                    ThresholdLevel.Warning => StatusResultType.Warning,
+                    _ => StatusResultType.Success
+                },
+                Description = $"Server: {server.DisplayName} (machine {server.Key.MachineId}, site {server.Key.SiteKey}); calculated {result.CalculatedAt.ToLocalTime():g}"
+            });
+        }
+
         public override HealthCheckStatus ExecuteAction(HealthCheckAction action)
         {
             throw new InvalidOperationException($"{GetType().Name} has no actions");
         }
 
-        public override Task<IEnumerable<HealthCheckStatus>> GetStatusAsync()
+        private List<HealthCheckStatus> GetCurrentServerStatuses()
         {
             var results = new List<HealthCheckStatus>();
 
@@ -65,7 +173,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 {
                     ResultType = StatusResultType.Success
                 });
-                return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
+                return results;
             }
 
             // Determine paths based on mode
@@ -92,7 +200,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     {
                         ResultType = StatusResultType.Info
                     });
-                    return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
+                    return results;
                 }
 
                 homeDir = HomeDirectory;
@@ -129,7 +237,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 }
             }
 
-            return Task.FromResult((IEnumerable<HealthCheckStatus>)results);
+            return results;
         }
 
         private void CheckDirectoryUsage(string directory, string displayName, List<HealthCheckStatus> results, double warningThreshold, double errorThreshold, string? additionalInfo = null)

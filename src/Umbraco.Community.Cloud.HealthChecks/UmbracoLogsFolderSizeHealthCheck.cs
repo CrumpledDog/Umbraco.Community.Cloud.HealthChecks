@@ -35,8 +35,9 @@ namespace Umbraco.Community.Cloud.HealthChecks
             IOptions<CloudHealthChecksOptions> options,
             IStatsService stats,
             IStatsThresholds thresholds,
-            IStatsTargetCatalog catalog)
-            : base(store, options, stats, thresholds)
+            IStatsTargetCatalog catalog,
+            IStatsServers servers)
+            : base(store, options, stats, thresholds, servers, catalog)
         {
             _hostEnvironment = hostEnvironment;
             _options = options.Value;

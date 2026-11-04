@@ -16,6 +16,7 @@ internal sealed class StatsRefreshJob : IRecurringBackgroundJob
     private static readonly TimeSpan DefaultPeriod = TimeSpan.FromHours(6);
 
     private readonly StatsService _stats;
+    private readonly StatsServers _servers;
     private readonly IStatsTargetCatalog _catalog;
     private readonly CloudHealthChecksOptions _options;
     private readonly ILogger<StatsRefreshJob> _logger;
@@ -25,11 +26,13 @@ internal sealed class StatsRefreshJob : IRecurringBackgroundJob
 
     public StatsRefreshJob(
         StatsService stats,
+        StatsServers servers,
         IStatsTargetCatalog catalog,
         IOptions<CloudHealthChecksOptions> options,
         ILogger<StatsRefreshJob> logger)
     {
         _stats = stats;
+        _servers = servers;
         _catalog = catalog;
         _options = options.Value;
         _logger = logger;
@@ -65,6 +68,16 @@ internal sealed class StatsRefreshJob : IRecurringBackgroundJob
         {
             _logger.LogDebug("Background scanning is disabled");
             return;
+        }
+
+        // Tell the other servers who this one is (its site key locates its shared results)
+        try
+        {
+            await _servers.PublishCurrentAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not publish this server's identity");
         }
 
         foreach (var target in _catalog.Targets.Where(t => t.AppliesToThisHost))

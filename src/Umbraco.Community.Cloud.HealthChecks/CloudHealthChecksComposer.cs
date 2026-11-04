@@ -43,6 +43,8 @@ namespace Umbraco.Community.Cloud.HealthChecks
             builder.Services.AddSingleton<IStatsTargetCatalog, StatsTargetCatalog>();
             builder.Services.AddSingleton<IStatsThresholds, StatsThresholds>();
             builder.Services.AddSingleton<StatsService>();
+            builder.Services.AddSingleton<StatsServers>();
+            builder.Services.AddSingleton<IStatsServers>(sp => sp.GetRequiredService<StatsServers>());
             builder.Services.AddSingleton<IStatsService>(sp => sp.GetRequiredService<StatsService>());
 
             // Recurring job that runs on every server role (Single, SchedulingPublisher and Subscriber),

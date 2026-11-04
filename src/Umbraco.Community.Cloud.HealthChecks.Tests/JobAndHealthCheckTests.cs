@@ -20,7 +20,7 @@ public class JobTests
         var svc = Build.Service(store, catalog, new FakeDiskReader { Usage = new DiskUsage(1000, 500) }, o);
         // Test mode points the NuGet target at the real user profile: never walk that in a unit test
         svc.Scanner = (p, n, t) => p.StartsWith(root.Path, StringComparison.OrdinalIgnoreCase) ? FolderScanner.Scan(p, n, t) : new FolderSizeResult { CalculatedAt = n };
-        var job = new StatsRefreshJob(svc, catalog, Options.Create(o), NullLogger<StatsRefreshJob>.Instance);
+        var job = new StatsRefreshJob(svc, ServersBuild.Servers(store, catalog), catalog, Options.Create(o), NullLogger<StatsRefreshJob>.Instance);
         return (job, svc, store, root);
     }
 
@@ -118,7 +118,7 @@ public class JobTests
         var o = new CloudHealthChecksOptions { LocalTestMode = true, BackgroundScan = { ScanTimeLimitMinutes = 0.001 } };
         var slow = Build.Service(store, Build.TestModeCatalog(root.Path, "m1", "site1"), new FakeDiskReader(), o);
         slow.Scanner = svc.Scanner;
-        var timedOutJob = new StatsRefreshJob(slow, Build.TestModeCatalog(root.Path, "m1", "site1"), Options.Create(o), NullLogger<StatsRefreshJob>.Instance);
+        var timedOutJob = new StatsRefreshJob(slow, ServersBuild.Servers(store, Build.TestModeCatalog(root.Path, "m1", "site1")), Build.TestModeCatalog(root.Path, "m1", "site1"), Options.Create(o), NullLogger<StatsRefreshJob>.Instance);
 
         await timedOutJob.RunJobAsync();
 
@@ -144,7 +144,8 @@ public class HealthCheckCompatibilityTests
             options,
             Build.Service(store, catalog, disk, options.Value),
             new StatsThresholds(options, catalog, disk),
-            catalog);
+            catalog,
+            ServersBuild.Servers(store, catalog));
 
         var statuses = (await check.GetStatusAsync()).ToList();
 
@@ -171,7 +172,8 @@ public class HealthCheckCompatibilityTests
             options,
             Build.Service(store, catalog, disk, options.Value),
             new StatsThresholds(options, catalog, disk),
-            catalog);
+            catalog,
+            ServersBuild.Servers(store, catalog));
 
         var status = Assert.Single(await check.GetStatusAsync());
 
@@ -189,7 +191,8 @@ public class HealthCheckCompatibilityTests
             options,
             Build.Service(store, catalog, disk, o),
             new StatsThresholds(options, catalog, disk),
-            catalog);
+            catalog,
+            ServersBuild.Servers(store, catalog));
     }
 
     [Fact]
@@ -239,6 +242,7 @@ public class HealthCheckCompatibilityTests
         services.AddSingleton<IStatsTargetCatalog>(catalog);
         services.AddSingleton<IStatsThresholds, StatsThresholds>();
         services.AddSingleton<IStatsService>(Build.Service(store, catalog));
+        services.AddSingleton<IStatsServers>(ServersBuild.Servers(store, catalog));
         services.AddSingleton<UmbracoLogsFolderSizeHealthCheck>();
         services.AddSingleton<NuGetCacheSizeHealthCheck>();
         services.AddSingleton<AzureStorageHealthCheck>();

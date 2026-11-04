@@ -16,6 +16,8 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private readonly CloudHealthChecksOptions _options;
         private readonly IStatsService? _stats;
         private readonly IStatsThresholds? _thresholds;
+        private readonly IStatsServers? _servers;
+        private readonly IStatsTargetCatalog? _catalog;
 
         protected FolderSizeHealthCheckBase(
             IHealthCheckResultStore store,
@@ -41,12 +43,31 @@ namespace Umbraco.Community.Cloud.HealthChecks
         }
 
         /// <summary>
+        /// As above, and also reports the results of the other servers (by name) when more than one server is known.
+        /// </summary>
+        protected FolderSizeHealthCheckBase(
+            IHealthCheckResultStore store,
+            IOptions<CloudHealthChecksOptions> options,
+            IStatsService stats,
+            IStatsThresholds thresholds,
+            IStatsServers servers,
+            IStatsTargetCatalog catalog)
+            : this(store, options, stats, thresholds)
+        {
+            _servers = servers;
+            _catalog = catalog;
+        }
+
+        /// <summary>
         /// The stats target (see <see cref="StatsTargetKeys"/>) this check reports on. When null the check reads the legacy
         /// per health check type result from the store.
         /// </summary>
         protected virtual string? StatsTargetKey => null;
 
         private bool UsesStats => _stats != null && _thresholds != null && !string.IsNullOrEmpty(StatsTargetKey);
+
+        private bool ReportsServers => UsesStats && _servers != null && _catalog != null && _options.BackgroundScan.Enabled;
+
         /// <summary>
         /// Gets the path to the folder to check
         /// </summary>
@@ -107,6 +128,125 @@ namespace Umbraco.Community.Cloud.HealthChecks
         }
 
         public override async Task<IEnumerable<HealthCheckStatus>> GetStatusAsync()
+        {
+            if (!ReportsServers || !ShouldRunCheck())
+            {
+                return await GetCurrentServerStatusAsync(string.Empty);
+            }
+
+            IReadOnlyList<StatsServer> servers;
+            try
+            {
+                servers = await _servers!.GetServersAsync();
+            }
+            catch (Exception)
+            {
+                return await GetCurrentServerStatusAsync(string.Empty);
+            }
+
+            // Name the servers only when there is more than one, so a single server reads as before
+            var results = await GetCurrentServerStatusAsync(servers.Count > 1 ? $"[{servers[0].DisplayName}] " : string.Empty);
+
+            if (servers.Count > 1)
+            {
+                results.AddRange(await GetOtherServerStatusesAsync(servers));
+            }
+
+            return results;
+        }
+
+        private async Task<List<HealthCheckStatus>> GetOtherServerStatusesAsync(IReadOnlyList<StatsServer> servers)
+        {
+            var statuses = new List<HealthCheckStatus>();
+            var current = servers[0];
+            var target = _catalog!.Find(StatsTargetKey!);
+            var others = servers.Skip(1).ToList();
+
+            // A shared disk is one measurement per site: report each other site once, naming the site and its servers
+            var units = target?.Scope == StatsScope.Shared
+                ? others.Where(s => s.Key.SiteKey != current.Key.SiteKey)
+                    .GroupBy(s => s.Key.SiteKey)
+                    .Select(g => (Label: $"site {g.Key} ({string.Join(", ", g.Select(s => s.DisplayName))})", Server: g.First()))
+                : others.Select(s => (Label: s.DisplayName, Server: s));
+
+            foreach (var (label, server) in units)
+            {
+                try
+                {
+                    statuses.Add(RenderOtherServer(label, server, await _stats!.GetLatestAsync(StatsTargetKey!, server.Key)));
+                }
+                catch (Exception ex)
+                {
+                    statuses.Add(new HealthCheckStatus($"[{label}] Error reading {FolderDisplayName}: {ex.Message}")
+                    {
+                        ResultType = StatusResultType.Error
+                    });
+                }
+            }
+
+            return statuses;
+        }
+
+        private HealthCheckStatus RenderOtherServer(string label, StatsServer server, FolderSizeResult? result)
+        {
+            if (result == null)
+            {
+                return new HealthCheckStatus($"[{label}] {FolderDisplayName}: no measurement has been recorded yet")
+                {
+                    ResultType = StatusResultType.Info,
+                    Description = $"Server: {server.DisplayName} (machine {server.Key.MachineId}, site {server.Key.SiteKey})"
+                };
+            }
+
+            if (!result.Success)
+            {
+                return new HealthCheckStatus($"[{label}] Error checking {FolderDisplayName}: {result.ErrorMessage} (result from {result.CalculatedAt:u})")
+                {
+                    ResultType = StatusResultType.Error,
+                    Description = $"Server: {server.DisplayName}"
+                };
+            }
+
+            var evaluation = _thresholds!.Evaluate(StatsTargetKey!, result);
+            var gb = result.SizeInBytes / (1024.0 * 1024.0 * 1024.0);
+            var size = gb >= 1 ? $"{gb:F2} GB" : $"{result.SizeInBytes / (1024.0 * 1024.0):F2} MB";
+            var ago = DateTime.UtcNow - result.CalculatedAt;
+            var agoText = ago.TotalMinutes < 1 ? "just now"
+                : ago.TotalHours < 1 ? $"{ago.TotalMinutes:F0} minutes ago"
+                : ago.TotalDays < 1 ? $"{ago.TotalHours:F0} hours ago"
+                : $"{ago.TotalDays:F0} days ago";
+
+            var message = $"[{label}] {FolderDisplayName} size: {size} ({result.FileCount:N0} files) - calculated {agoText}";
+            message += evaluation.Reasons.Count > 0
+                ? " - " + string.Join(". ", evaluation.Reasons) + "."
+                : evaluation.Level == ThresholdLevel.Ok ? " - Within normal limits." : string.Empty;
+
+            if (result.DiskUsedPercent is { } used)
+            {
+                message += $" Disk {used:F1}% used.";
+            }
+
+            var status = new HealthCheckStatus(message)
+            {
+                ResultType = evaluation.Level switch
+                {
+                    ThresholdLevel.Error => StatusResultType.Error,
+                    ThresholdLevel.Warning => StatusResultType.Warning,
+                    _ => StatusResultType.Success
+                },
+                Description = $"Server: {server.DisplayName} (machine {server.Key.MachineId}, site {server.Key.SiteKey})"
+            };
+
+            var cleanupUrl = GetCleanupScriptUrl();
+            if (!string.IsNullOrEmpty(cleanupUrl) && evaluation.Level >= ThresholdLevel.Warning)
+            {
+                status.ReadMoreLink = cleanupUrl;
+            }
+
+            return status;
+        }
+
+        private async Task<List<HealthCheckStatus>> GetCurrentServerStatusAsync(string serverPrefix)
         {
             var results = new List<HealthCheckStatus>();
 
@@ -220,7 +360,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                             ? $"{calculatedAgo.TotalHours:F0} hours ago"
                             : $"{calculatedAgo.TotalDays:F0} days ago";
 
-                var message = $"{FolderDisplayName} size: {sizeDisplay} ({fileCount:N0} files) - calculated {ageDisplay}";
+                var message = $"{serverPrefix}{FolderDisplayName} size: {sizeDisplay} ({fileCount:N0} files) - calculated {ageDisplay}";
 
                 // Only check file age if thresholds are configured
                 double oldestFileAge = 0;
@@ -319,15 +459,23 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     // Show threshold details even when within normal limits
                     // (from the same measured quota the status was evaluated with)
                     var displayed = UsesStats ? _thresholds!.Resolve(StatsTargetKey!, cachedResult?.DiskTotalBytes) : null;
-                    var warningMb = displayed?.SizeWarningMb ?? WarningThresholdMb;
-                    var errorMb = displayed?.SizeErrorMb ?? ErrorThresholdMb;
-                    var warningThresholdDisplay = warningMb >= 1024
-                        ? $"{warningMb / 1024.0:F1} GB"
-                        : $"{warningMb} MB";
-                    var errorThresholdDisplay = errorMb >= 1024
-                        ? $"{errorMb / 1024.0:F1} GB"
-                        : $"{errorMb} MB";
-                    message += $" - Within normal limits (warning: {warningThresholdDisplay}, error: {errorThresholdDisplay}).";
+                    if (displayed != null && displayed.SizeWarningMb == null && displayed.SizeErrorMb == null)
+                    {
+                        // Disk-usage based target (no size thresholds)
+                        message += " - Within normal limits" + (cachedResult?.DiskUsedPercent is { } usedPercent ? $" (disk {usedPercent:F1}% used)" : string.Empty) + ".";
+                    }
+                    else
+                    {
+                        var warningMb = displayed?.SizeWarningMb ?? WarningThresholdMb;
+                        var errorMb = displayed?.SizeErrorMb ?? ErrorThresholdMb;
+                        var warningThresholdDisplay = warningMb >= 1024
+                            ? $"{warningMb / 1024.0:F1} GB"
+                            : $"{warningMb} MB";
+                        var errorThresholdDisplay = errorMb >= 1024
+                            ? $"{errorMb / 1024.0:F1} GB"
+                            : $"{errorMb} MB";
+                        message += $" - Within normal limits (warning: {warningThresholdDisplay}, error: {errorThresholdDisplay}).";
+                    }
                 }
 
                 var description = $"Path: {folderPath}";
