@@ -24,7 +24,7 @@
     <Product>Umbraco.Community.Cloud.HealthChecks</Product>
     <Title>Umbraco Cloud Health Checks</Title>
     <PackageTags>umbraco plugin package umbraco-marketplace cloud health checks</PackageTags>
-    <PackageDescription>A package for adding Umbraco Cloud health checks</PackageDescription>
+    <PackageDescription>Disk and folder health checks and a measurement API for Umbraco on Umbraco Cloud, Azure Web Apps, VMs and containers</PackageDescription>
     <RepositoryUrl>https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks</RepositoryUrl>
     <PackageIcon>cloud-healthchecks.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
