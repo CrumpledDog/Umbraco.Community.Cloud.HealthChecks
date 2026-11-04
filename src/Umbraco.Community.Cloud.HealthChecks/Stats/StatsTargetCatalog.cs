@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.Factories;
@@ -12,6 +13,9 @@ public interface IStatsTargetCatalog
 
     /// <summary>This server's identity.</summary>
     ServerKey CurrentServer { get; }
+
+    /// <summary>The hosting platform detected for this site (see <see cref="HostingPlatform"/>).</summary>
+    HostingPlatform Platform { get; }
 
     /// <summary>Finds a target by key (see <see cref="StatsTargetKeys"/>), or null.</summary>
     StatsTarget? Find(string key);
@@ -29,12 +33,14 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
     public StatsTargetCatalog(
         IHostEnvironment hostEnvironment,
         IOptions<CloudHealthChecksOptions> options,
-        IMachineInfoFactory machineInfoFactory)
+        IMachineInfoFactory machineInfoFactory,
+        IConfiguration configuration)
         : this(
             hostEnvironment.ContentRootPath,
             options.Value,
             machineInfoFactory.GetMachineIdentifier() ?? Environment.MachineName,
             new HostingEnvironmentInfo(),
+            HostingPlatformDetector.Detect(configuration, new HostingEnvironmentInfo(), hostEnvironment.ContentRootPath, File.Exists),
             Directory.Exists)
     {
     }
@@ -44,14 +50,19 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
         CloudHealthChecksOptions options,
         string machineId,
         HostingEnvironmentInfo environment,
+        HostingPlatform? platform,
         Func<string, bool> directoryExists)
     {
         CurrentServer = new ServerKey(machineId, environment.SiteKey);
-        _targets = new Lazy<IReadOnlyList<StatsTarget>>(() => Build(contentRoot, options, environment, directoryExists));
+        Platform = platform ?? (environment.IsAppService ? HostingPlatform.AzureWebApp : HostingPlatform.Other);
+        _targets = new Lazy<IReadOnlyList<StatsTarget>>(() => Build(contentRoot, options, environment, Platform, directoryExists));
     }
 
     /// <inheritdoc />
     public ServerKey CurrentServer { get; }
+
+    /// <inheritdoc />
+    public HostingPlatform Platform { get; }
 
     /// <inheritdoc />
     public IReadOnlyList<StatsTarget> Targets => _targets.Value;
@@ -64,13 +75,13 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
         string contentRoot,
         CloudHealthChecksOptions options,
         HostingEnvironmentInfo env,
+        HostingPlatform platform,
         Func<string, bool> directoryExists)
     {
         var testMode = options.LocalTestMode;
-        var homeExists = directoryExists(HomeDirectory);
 
-        // Same gating the health checks always used: C:\home exists, or test mode. App Service detection (both variables) also counts.
-        var onAzure = testMode || env.IsAppService || homeExists;
+        // Umbraco Cloud and Azure Web Apps: every target applies. Anywhere else only the logs folder does (test mode excepted).
+        var onAzure = testMode || platform != HostingPlatform.Other;
 
         var logsPath = Path.Combine(contentRoot, "umbraco", "Logs");
 
@@ -90,7 +101,7 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
         var homeDiskPath = testMode ? contentRoot : HomeDirectory;
         var localDiskPath = testMode ? Path.Combine(contentRoot, "wwwroot") : LocalDirectory;
 
-        var diskApplies = testMode || homeExists;
+        var diskApplies = onAzure;
         var localDiskApplies = diskApplies && directoryExists(localDiskPath);
         var tempDiskApplies = diskApplies && directoryExists(tempDiskPath) && !SameRoot(localDiskPath, tempDiskPath);
 

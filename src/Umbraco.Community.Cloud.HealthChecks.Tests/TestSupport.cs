@@ -100,7 +100,7 @@ internal static class Build
         var env = new HostingEnvironmentInfo(
             name => name == "TEMP" ? tempOverride : null,
             site);
-        return new StatsTargetCatalog(contentRoot, new CloudHealthChecksOptions { LocalTestMode = true }, machineId, env, Directory.Exists);
+        return new StatsTargetCatalog(contentRoot, new CloudHealthChecksOptions { LocalTestMode = true }, machineId, env, null, Directory.Exists);
     }
 
     public static StatsService Service(

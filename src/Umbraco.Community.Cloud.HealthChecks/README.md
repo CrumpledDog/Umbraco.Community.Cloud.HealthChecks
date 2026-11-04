@@ -35,6 +35,15 @@ This approach is especially valuable for large folders (NuGet cache, logs) where
   - Uses background scanning with distributed cache
   - Displays calculation timestamp
 
+### Hosting platform detection
+
+The package works on any infrastructure:
+
+- **Umbraco Cloud** (`Umbraco:Cloud:IsRunningOnCloud`, or an App Service with `Umbraco:Cloud:Identity:EnvironmentId` / `umbraco-cloud.json`) and **Azure Web Apps** (both `WEBSITE_SITE_NAME` and `WEBSITE_INSTANCE_ID` set): all checks apply. The health check group is named **Umbraco Cloud** or **Azure Web App** accordingly.
+- **Anywhere else**: only the Umbraco Logs check applies (group **Hosting**).
+
+`CloudHealthChecks:LocalTestMode` still makes every check run locally. The detected platform is available as `IStatsTargetCatalog.Platform`.
+
 ## Installation
 
 Install via NuGet Package Manager or the .NET CLI:

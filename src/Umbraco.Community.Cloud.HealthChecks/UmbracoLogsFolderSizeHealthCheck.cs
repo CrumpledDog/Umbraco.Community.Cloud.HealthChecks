@@ -21,11 +21,13 @@ namespace Umbraco.Community.Cloud.HealthChecks
             IHostEnvironment hostEnvironment,
             IOptions<CloudHealthChecksOptions> options,
             IStatsService stats,
-            IStatsThresholds thresholds)
+            IStatsThresholds thresholds,
+            IStatsTargetCatalog catalog)
             : base(store, options, stats, thresholds)
         {
             _hostEnvironment = hostEnvironment;
             _options = options.Value;
+            HostingPlatformDetector.ApplyGroup(this, catalog.Platform);
         }
 
         protected override string? StatsTargetKey => StatsTargetKeys.UmbracoLogs;

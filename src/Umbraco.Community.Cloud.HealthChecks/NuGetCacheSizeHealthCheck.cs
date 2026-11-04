@@ -27,6 +27,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
             _catalog = catalog;
             _thresholds = thresholds;
             _localTestMode = options.Value.LocalTestMode;
+            HostingPlatformDetector.ApplyGroup(this, catalog.Platform);
         }
 
         protected override string? StatsTargetKey => StatsTargetKeys.NuGetCache;

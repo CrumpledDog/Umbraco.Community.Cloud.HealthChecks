@@ -141,7 +141,8 @@ public class HealthCheckCompatibilityTests
             new FakeHostEnvironment { ContentRootPath = root.Path },
             options,
             Build.Service(store, catalog, disk, options.Value),
-            new StatsThresholds(options, catalog, disk));
+            new StatsThresholds(options, catalog, disk),
+            catalog);
 
         var statuses = (await check.GetStatusAsync()).ToList();
 
@@ -167,7 +168,8 @@ public class HealthCheckCompatibilityTests
             new FakeHostEnvironment { ContentRootPath = root.Path },
             options,
             Build.Service(store, catalog, disk, options.Value),
-            new StatsThresholds(options, catalog, disk));
+            new StatsThresholds(options, catalog, disk),
+            catalog);
 
         var status = Assert.Single(await check.GetStatusAsync());
 
@@ -188,7 +190,8 @@ public class HealthCheckCompatibilityTests
             new FakeHostEnvironment { ContentRootPath = root.Path },
             options,
             Build.Service(store, catalog, disk, options.Value),
-            new StatsThresholds(options, catalog, disk));
+            new StatsThresholds(options, catalog, disk),
+            catalog);
 
         var status = Assert.Single(await check.GetStatusAsync());
 

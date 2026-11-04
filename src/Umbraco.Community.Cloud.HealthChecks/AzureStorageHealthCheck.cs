@@ -19,13 +19,17 @@ namespace Umbraco.Community.Cloud.HealthChecks
         private readonly CloudHealthChecksOptions _options;
         private readonly IHostEnvironment _hostEnvironment;
         private readonly IDiskUsageReader _diskUsageReader;
+        private readonly IStatsTargetCatalog _catalog;
 
         public AzureStorageHealthCheck(
             IOptions<CloudHealthChecksOptions> options,
             IHostEnvironment hostEnvironment,
-            IDiskUsageReader diskUsageReader)
+            IDiskUsageReader diskUsageReader,
+            IStatsTargetCatalog catalog)
         {
             _diskUsageReader = diskUsageReader;
+            _catalog = catalog;
+            HostingPlatformDetector.ApplyGroup(this, catalog.Platform);
             _options = options.Value;
             _hostEnvironment = hostEnvironment;
         }
@@ -67,10 +71,10 @@ namespace Umbraco.Community.Cloud.HealthChecks
             else
             {
                 // Production mode - only run if we're in Azure (C:\home exists)
-                if (!Directory.Exists(HomeDirectory))
+                if (!_catalog.Find(StatsTargetKeys.HomeDisk)!.AppliesToThisHost || !Directory.Exists(HomeDirectory))
                 {
                     results.Add(new HealthCheckStatus(
-                        "This check is only applicable in Azure Web Apps environment.")
+                        "This check is only applicable on Umbraco Cloud or Azure Web Apps.")
                     {
                         ResultType = StatusResultType.Info
                     });

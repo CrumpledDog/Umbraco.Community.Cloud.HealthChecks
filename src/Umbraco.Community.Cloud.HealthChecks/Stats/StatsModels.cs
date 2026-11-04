@@ -103,3 +103,16 @@ public sealed record TargetThresholds(
 /// <param name="Level">Worst level reached.</param>
 /// <param name="Reasons">Human readable reasons for every threshold exceeded (empty when none).</param>
 public sealed record ThresholdEvaluation(ThresholdLevel Level, IReadOnlyList<string> Reasons);
+
+/// <summary>Where the site is hosted, as far as it can be detected.</summary>
+public enum HostingPlatform
+{
+    /// <summary>Neither Umbraco Cloud nor Azure App Service: only the logs folder is monitored.</summary>
+    Other = 0,
+
+    /// <summary>Azure App Service (both <c>WEBSITE_SITE_NAME</c> and <c>WEBSITE_INSTANCE_ID</c> are set), not Umbraco Cloud.</summary>
+    AzureWebApp = 1,
+
+    /// <summary>Umbraco Cloud.</summary>
+    UmbracoCloud = 2
+}
