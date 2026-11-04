@@ -2,7 +2,15 @@
 
 ![Cloud Health Checks](https://raw.githubusercontent.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/develop/v1/src/Umbraco.Community.Cloud.HealthChecks/cloud-healthchecks.png)
 
-A package that provides health checks for Umbraco Cloud environments, helping you monitor critical system resources and storage usage.
+Health checks that keep an eye on disk and folder usage for Umbraco sites on **Umbraco Cloud**, **Azure Web Apps**, and plain **VMs or containers**: log growth, the NuGet cache and Azure storage quotas, with a small API so other packages can use the same measurements.
+
+| Where your site runs | Checks that apply | Health check group |
+| --- | --- | --- |
+| Umbraco Cloud | All: Azure Storage Usage, NuGet Cache Size, Umbraco Logs Folder Size | **Umbraco Cloud** |
+| Azure Web Apps (App Service) | All three | **Azure Web App** |
+| VM, container or anywhere else | Umbraco Logs Folder Size only | **Hosting** |
+
+The platform is detected automatically, there is nothing to configure (see [Hosting platform detection](#hosting-platform-detection)).
 
 ## Features
 
@@ -26,21 +34,21 @@ This approach is especially valuable for large folders (NuGet cache, logs) where
   - Windows-only support
   - Uses Windows API for instant results (no scanning required)
 
-- **NuGet Cache Size** - Monitors the size of the NuGet cache directory
+- **NuGet Cache Size** - Monitors the size of the NuGet cache directory (Umbraco Cloud and Azure Web Apps only)
   - **Intelligent defaults**: Automatically calculates thresholds based on total home directory size (50% for error, 75% of error for warning)
   - Uses background scanning with distributed cache
   - Displays calculation timestamp
   
-- **Umbraco Logs Folder Size** - Tracks the size of Umbraco log files
+- **Umbraco Logs Folder Size** - Tracks the size of Umbraco log files and the age of the oldest one (applies everywhere, including VMs and containers)
   - Uses background scanning with distributed cache
   - Displays calculation timestamp
 
 ### Hosting platform detection
 
-The package works on any infrastructure:
+The package detects where it is running, so the same package works on any infrastructure:
 
 - **Umbraco Cloud** (`Umbraco:Cloud:IsRunningOnCloud`, or an App Service with `Umbraco:Cloud:Identity:EnvironmentId` / `umbraco-cloud.json`) and **Azure Web Apps** (both `WEBSITE_SITE_NAME` and `WEBSITE_INSTANCE_ID` set): all checks apply. The health check group is named **Umbraco Cloud** or **Azure Web App** accordingly.
-- **Anywhere else**: only the Umbraco Logs check applies (group **Hosting**).
+- **VMs, containers and anywhere else**: only the Umbraco Logs check applies (group **Hosting**). The Azure-specific checks (storage quotas, NuGet cache under `C:home`) would only report that they do not apply, so they are left out.
 
 `CloudHealthChecks:LocalTestMode` still makes every check run locally. The detected platform is available as `IStatsTargetCatalog.Platform`.
 
@@ -130,7 +138,7 @@ public interface IStatsService
 
 public interface IStatsThresholds
 {
-    TargetThresholds Resolve(string targetKey);   // configured values or the adaptive NuGet defaults
+    TargetThresholds Resolve(string targetKey, long? measuredDiskTotalBytes = null); // configured values or the adaptive NuGet defaults (from the measured site quota)
     ThresholdEvaluation Evaluate(string targetKey, FolderSizeResult? result, DateTime? nowUtc = null); // Level None/Ok/Warning/Error + reasons
 }
 
@@ -152,6 +160,7 @@ Notes:
 ## Requirements
 
 - Umbraco CMS v17+
+- Umbraco Cloud, Azure Web Apps (Windows), or any other host (VM, container) for the Umbraco Logs check
 
 ## Proactive Monitoring
 

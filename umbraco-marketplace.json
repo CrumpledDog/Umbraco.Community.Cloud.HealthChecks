@@ -11,5 +11,5 @@
   "IssueTrackerUrl": "https://github.com/CrumpledDog/Umbraco.Community.Cloud.HealthChecks/issues",
   "LicenseTypes": [ "Free" ],
   "PackageType": "Package",
-  "Tags": [ "Umbraco Cloud", "Health Checks", "Monitoring" ]
+  "Tags": [ "Umbraco Cloud", "Azure", "Health Checks", "Monitoring" ]
 }
