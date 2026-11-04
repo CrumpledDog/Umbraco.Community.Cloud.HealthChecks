@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Umbraco.Cms.Core.HealthChecks;
+using Umbraco.Community.Cloud.HealthChecks.Services;
 using Umbraco.Community.Cloud.HealthChecks.Stats;
 using Xunit;
 
@@ -326,4 +327,70 @@ internal sealed class ThrowingStore : Umbraco.Community.Cloud.HealthChecks.Servi
 
     public Task<FolderSizeResult?> GetAsync(string healthCheckName) =>
         healthCheckName == _failingName ? throw new InvalidOperationException("store down") : _inner.GetAsync(healthCheckName);
+}
+
+[HealthCheck("7A1C4D2E-9B35-4F08-A6D1-3E5B8C9F0A22", "Overdue like", Group = "Test")]
+internal sealed class OverdueLikeCheck : FolderSizeHealthCheckBase
+{
+    private readonly string _path;
+
+    public OverdueLikeCheck(string path, IHealthCheckResultStore store, IOptions<CloudHealthChecksOptions> options, IStatsService stats, IStatsThresholds thresholds, IStatsServers servers, IStatsTargetCatalog catalog)
+        : base(store, options, stats, thresholds, servers, catalog)
+    {
+        _path = path;
+    }
+
+    protected override TimeSpan ProcessUptime => TimeSpan.FromMinutes(30);
+
+    protected override string? StatsTargetKey => StatsTargetKeys.UmbracoLogs;
+
+    public override string FolderPath => _path;
+
+    protected override long WarningThresholdMb => 0;
+
+    protected override long ErrorThresholdMb => 0;
+
+    protected override string FolderDisplayName => "Logs";
+}
+
+public class OverdueScanTests
+{
+    private static async Task<HealthCheckStatus> Run(bool identityPublished)
+    {
+        using var root = new TempFolder();
+        root.AddFile("umbraco/Logs/a.txt", 1);
+        var store = new InMemoryResultStore();
+        var options = Options.Create(new CloudHealthChecksOptions { LocalTestMode = true });
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1");
+        var disk = new FakeDiskReader();
+        var servers = ServersBuild.Servers(store, catalog, null, "WEB1/site1");
+        if (identityPublished)
+        {
+            await servers.PublishCurrentAsync();
+        }
+
+        var check = new OverdueLikeCheck(
+            Path.Combine(root.Path, "umbraco", "Logs"), store, options, Build.Service(store, catalog, disk, options.Value),
+            new StatsThresholds(options, catalog, disk), servers, catalog);
+        return Assert.Single(await check.GetStatusAsync());
+    }
+
+    [Fact]
+    public async Task Job_that_never_started_is_flagged_once_the_server_has_been_up_a_while()
+    {
+        var status = await Run(identityPublished: false);
+
+        Assert.Equal(StatusResultType.Warning, status.ResultType);
+        Assert.Contains("has not started", status.Message);
+        Assert.Contains("MainDom", status.Message);
+    }
+
+    [Fact]
+    public async Task Slow_first_scan_is_not_flagged_because_the_job_has_started()
+    {
+        var status = await Run(identityPublished: true);
+
+        Assert.Equal(StatusResultType.Info, status.ResultType);
+        Assert.DoesNotContain("has not started", status.Message);
+    }
 }

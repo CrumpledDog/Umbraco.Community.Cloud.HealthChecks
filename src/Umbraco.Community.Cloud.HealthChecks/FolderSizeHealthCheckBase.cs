@@ -64,6 +64,9 @@ namespace Umbraco.Community.Cloud.HealthChecks
         /// </summary>
         protected virtual string? StatsTargetKey => null;
 
+        /// <summary>How long this process has been running (virtual so the overdue-scan hint can be tested).</summary>
+        protected virtual TimeSpan ProcessUptime => DateTime.UtcNow - System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime();
+
         private bool UsesStats => _stats != null && _thresholds != null && !string.IsNullOrEmpty(StatsTargetKey);
 
         private bool ReportsServers => UsesStats && _servers != null && _catalog != null && _options.BackgroundScan.Enabled;
@@ -318,16 +321,25 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     {
                         // Never walk the folder in a request: the background job (every server role) will measure it shortly
                         var pending = $"{FolderDisplayName}: no measurement has been recorded for this server yet. The background scan runs shortly after start-up and then every {_options.BackgroundScan.ScanIntervalHours:0.##} hours.";
-                        var uptime = DateTime.UtcNow - System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime();
-                        if (uptime > TimeSpan.FromMinutes(10))
+                        var uptime = ProcessUptime;
+                        var overdue = false;
+                        if (uptime > TimeSpan.FromMinutes(10) && _servers != null)
                         {
-                            // The job starts about 2-3 minutes after start-up: if nothing exists by now it is not running here
-                            pending += $" This server has been running for {uptime.TotalMinutes:0} minutes, so the scan is overdue: check that this instance holds MainDom (look for 'Could not register with MainDom' in the logs) and that its server role is Single, SchedulingPublisher or Subscriber.";
+                            // The refresh job publishes this server's identity as its very first step, so if that is still missing
+                            // well after the start-up delay the job has not started here. (A slow first scan is not "overdue":
+                            // the identity exists by then.)
+                            var self = (await _servers.GetServersAsync())[0];
+                            overdue = self.LastReportedAt == null;
+                        }
+
+                        if (overdue)
+                        {
+                            pending += $" This server has been running for {uptime.TotalMinutes:0} minutes and its background job has not started: check that this instance holds MainDom (look for 'Could not register with MainDom' in the logs) and that its server role is Single, SchedulingPublisher or Subscriber.";
                         }
 
                         results.Add(new HealthCheckStatus(pending)
                         {
-                            ResultType = uptime > TimeSpan.FromMinutes(10) ? StatusResultType.Warning : StatusResultType.Info
+                            ResultType = overdue ? StatusResultType.Warning : StatusResultType.Info
                         });
                         return results;
                     }
