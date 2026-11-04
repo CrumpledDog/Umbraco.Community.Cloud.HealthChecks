@@ -390,3 +390,55 @@ public class ReviewFixTests
         Assert.Equal(10, result.SizeInBytes);
     }
 }
+
+public class CrossServerPublicationTests
+{
+    [Fact]
+    public async Task A_result_recorded_by_another_server_while_this_server_scans_is_not_overwritten()
+    {
+        using var root = new TempFolder();
+        root.AddFile("umbraco/Logs/a.txt", 100);
+        var store = new InMemoryResultStore();
+
+        // Two servers of the same site (shared logs disk), one shared result store
+        var scanning = Build.Service(store, Build.TestModeCatalog(root.Path, "server-a", "site1"));
+        var cleaning = Build.Service(store, Build.TestModeCatalog(root.Path, "server-b", "site1"));
+
+        var scanStart = DateTime.UtcNow.AddMinutes(-5);
+        scanning.UtcNow = () => scanStart;
+        var scanStarted = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
+        scanning.Scanner = (_, now, _) =>
+        {
+            scanStarted.Set();
+            release.Wait(TimeSpan.FromSeconds(10));
+            return new FolderSizeResult { SizeInBytes = 100, FileCount = 1, CalculatedAt = now };
+        };
+
+        var scan = scanning.MeasureAsync(StatsTargetKeys.UmbracoLogs);
+        Assert.True(scanStarted.Wait(TimeSpan.FromSeconds(10)));
+
+        await cleaning.RecordAsync(StatsTargetKeys.UmbracoLogs, new FolderSizeResult { SizeInBytes = 10, CalculatedAt = DateTime.UtcNow });
+        release.Set();
+        var result = await scan;
+
+        Assert.Equal(10, store.Items["stats:shared:site1:umbraco-logs"].SizeInBytes);
+        Assert.Equal(10, result.SizeInBytes);
+        Assert.Equal("server-b", store.Items["stats:shared:site1:umbraco-logs"].MachineId);
+    }
+
+    [Fact]
+    public async Task An_older_stored_result_does_not_stop_a_new_scan_publishing()
+    {
+        using var root = new TempFolder();
+        root.AddFile("umbraco/Logs/a.txt", 100);
+        var store = new InMemoryResultStore();
+        var svc = Build.Service(store, Build.TestModeCatalog(root.Path, "server-a", "site1"));
+        store.Items["stats:shared:site1:umbraco-logs"] = new FolderSizeResult { SizeInBytes = 1, CalculatedAt = DateTime.UtcNow.AddHours(-6) };
+
+        var result = await svc.MeasureAsync(StatsTargetKeys.UmbracoLogs);
+
+        Assert.Equal(100, result.SizeInBytes);
+        Assert.Equal(100, store.Items["stats:shared:site1:umbraco-logs"].SizeInBytes);
+    }
+}

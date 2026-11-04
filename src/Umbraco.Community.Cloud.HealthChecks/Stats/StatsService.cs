@@ -144,6 +144,7 @@ public sealed class StatsService : IStatsService
         try
         {
             var versionAtStart = VersionOf(target);
+            var startedAt = UtcNow();
 
             using var limitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             limitCts.CancelAfter(limit);
@@ -152,7 +153,7 @@ public sealed class StatsService : IStatsService
             try
             {
                 var token = limitCts.Token;
-                var now = UtcNow();
+                var now = startedAt;
                 result = await Task.Run(() => Scanner(target.Path, now, token), CancellationToken.None);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -176,6 +177,18 @@ public sealed class StatsService : IStatsService
                     // A result was recorded (e.g. after a clean-up) while this scan ran: the scan saw the folder before it
                     // and must not undo it.
                     return await _store.GetAsync(StoreName(target, _catalog.CurrentServer)) ?? result;
+                }
+
+                // Another server may have recorded a result for this shared disk (e.g. after a clean-up) while this scan ran.
+                // The store has no atomic conditional write, so this narrows the race from the scan's duration to the gap
+                // between this read and the write below.
+                if (target.Scope == StatsScope.Shared)
+                {
+                    var stored = await _store.GetAsync(StoreName(target, _catalog.CurrentServer));
+                    if (stored is { Success: true } && stored.CalculatedAt > startedAt)
+                    {
+                        return stored;
+                    }
                 }
 
                 await PersistAsync(target, result);
