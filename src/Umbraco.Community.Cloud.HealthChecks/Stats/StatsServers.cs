@@ -101,6 +101,20 @@ public sealed class StatsServers : IStatsServers
 
     internal static string IdentityName(string machineId) => $"stats-server:{machineId}";
 
+    // When this server's refresh job last published its identity (null until its first run, or when background scanning is off)
+    private async Task<DateTime?> ReadOwnReportTimeAsync(ServerKey current)
+    {
+        try
+        {
+            return (await _store.GetAsync(IdentityName(current.MachineId)))?.CalculatedAt;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not read this server's published identity");
+            return null;
+        }
+    }
+
     /// <summary>Publishes this server's identity (site key and name) so other servers can find its shared results.</summary>
     internal Task PublishCurrentAsync() =>
         _store.StoreAsync(IdentityName(_catalog.CurrentServer.MachineId), new FolderSizeResult
@@ -117,7 +131,7 @@ public sealed class StatsServers : IStatsServers
         var current = _catalog.CurrentServer;
         var servers = new List<StatsServer>
         {
-            new(current, _displayName, true, UtcNow())
+            new(current, _displayName, true, await ReadOwnReportTimeAsync(current))
         };
 
         IReadOnlyList<string> ids;

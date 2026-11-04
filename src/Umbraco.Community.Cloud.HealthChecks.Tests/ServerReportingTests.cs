@@ -222,4 +222,108 @@ public class MultiServerHealthCheckTests
         var local = Assert.Single(statuses, s => s.Message.StartsWith("[FE3/site2]"));
         Assert.Equal(StatusResultType.Success, local.ResultType);
     }
+
+    [Fact]
+    public async Task Current_server_is_named_on_failures_too_not_only_on_the_size_line()
+    {
+        var (check, store, root) = Create(s => { }, ("m3", "site2", "FE3/site2"));
+        using var _r = root;
+        store.Items["stats:shared:site1:umbraco-logs"] = new FolderSizeResult { ErrorMessage = "access denied", CalculatedAt = DateTime.UtcNow };
+        store.Items["stats:shared:site2:umbraco-logs"] = Logs(1);
+
+        var statuses = (await check.GetStatusAsync()).ToList();
+
+        Assert.StartsWith("[WEB1/site1] Error checking", statuses[0].Message);
+        Assert.Equal(StatusResultType.Error, statuses[0].ResultType);
+    }
+
+    [Fact]
+    public async Task Pending_current_server_is_named_when_there_are_several_servers()
+    {
+        var (check, _, root) = Create(s => { }, ("m3", "site2", "FE3/site2"));
+        using var _r = root;
+
+        var statuses = (await check.GetStatusAsync()).ToList();
+
+        Assert.StartsWith("[WEB1/site1] Umbraco Logs folder: no measurement", statuses[0].Message);
+    }
+
+    [Fact]
+    public async Task Local_temp_without_background_scanning_does_not_report_a_pass_it_cannot_evaluate()
+    {
+        using var root = new TempFolder();
+        root.AddFile("tmp/x.bin", 1);
+        var store = new InMemoryResultStore();
+        var options = Options.Create(new CloudHealthChecksOptions { LocalTestMode = true, BackgroundScan = { Enabled = false } });
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1", Path.Combine(root.Path, "tmp"));
+        var disk = new FakeDiskReader();
+        var check = new LocalTempFolderSizeHealthCheck(
+            store, options, Build.Service(store, catalog, disk, options.Value), new StatsThresholds(options, catalog, disk),
+            ServersBuild.Servers(store, catalog), catalog);
+
+        var status = Assert.Single(await check.GetStatusAsync());
+
+        Assert.Equal(StatusResultType.Info, status.ResultType);
+        Assert.Contains("could not be evaluated", status.Message);
+        Assert.DoesNotContain("Within normal limits", status.Message);
+    }
+
+    [Fact]
+    public async Task Unreadable_disk_on_one_server_does_not_hide_the_others()
+    {
+        using var root = new TempFolder();
+        Directory.CreateDirectory(Path.Combine(root.Path, "wwwroot"));
+        var inner = new InMemoryResultStore();
+        var store = new ThrowingStore(inner, "stats:shared:site2:home-disk");
+        var options = Options.Create(new CloudHealthChecksOptions { LocalTestMode = true });
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1");
+        var disk = new FakeDiskReader { Usage = new DiskUsage(1000, 500) };
+        var ids = new FakeMachineIds();
+        ids.Ids.AddRange(new[] { "m1", "m3" });
+        inner.Items[StatsServers.IdentityName("m3")] = new FolderSizeResult { MachineId = "m3", SiteKey = "site2", ServerName = "FE3/site2", CalculatedAt = DateTime.UtcNow };
+        inner.Items["stats:instance:m3:local-disk"] = new FolderSizeResult { DiskTotalBytes = 1000, DiskFreeBytes = 900, CalculatedAt = DateTime.UtcNow };
+        var check = new AzureStorageHealthCheck(
+            options, new FakeHostEnvironment { ContentRootPath = root.Path }, disk, catalog,
+            ServersBuild.Servers(store, catalog, ids, "WEB1/site1"),
+            Build.Service(store, catalog, disk, options.Value), new StatsThresholds(options, catalog, disk));
+
+        var statuses = (await check.GetStatusAsync()).ToList();
+
+        Assert.Contains(statuses, s => s.Message.StartsWith("[site site2 (FE3/site2)] Error reading") && s.ResultType == StatusResultType.Error);
+        Assert.Contains(statuses, s => s.Message.StartsWith("[FE3/site2]") && s.ResultType == StatusResultType.Success);
+    }
+
+    [Fact]
+    public async Task Last_reported_time_comes_from_the_published_identity_not_from_the_call()
+    {
+        using var root = new TempFolder();
+        var store = new InMemoryResultStore();
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1");
+        var servers = ServersBuild.Servers(store, catalog, null, "WEB1/site1");
+
+        Assert.Null((await servers.GetServersAsync())[0].LastReportedAt);
+
+        var published = new DateTime(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
+        servers.UtcNow = () => published;
+        await servers.PublishCurrentAsync();
+
+        Assert.Equal(published, (await servers.GetServersAsync())[0].LastReportedAt);
+    }
+}
+
+internal sealed class ThrowingStore : Umbraco.Community.Cloud.HealthChecks.Services.IHealthCheckResultStore
+{
+    private readonly InMemoryResultStore _inner;
+    private readonly string _failingName;
+
+    public ThrowingStore(InMemoryResultStore inner, string failingName)
+    {
+        _inner = inner;
+        _failingName = failingName;
+    }
+
+    public Task StoreAsync(string healthCheckName, FolderSizeResult result) => _inner.StoreAsync(healthCheckName, result);
+
+    public Task<FolderSizeResult?> GetAsync(string healthCheckName) =>
+        healthCheckName == _failingName ? throw new InvalidOperationException("store down") : _inner.GetAsync(healthCheckName);
 }

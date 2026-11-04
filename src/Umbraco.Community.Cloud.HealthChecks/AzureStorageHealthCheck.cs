@@ -82,6 +82,9 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 var servers = await _servers.GetServersAsync();
                 if (servers.Count > 1)
                 {
+                    // Name this server on its own entries too, not only on the other servers'
+                    results = StatusNaming.WithServerName(results, servers[0].DisplayName);
+
                     results.AddRange(await GetOtherServerStatusesAsync(servers));
                 }
             }
@@ -120,6 +123,23 @@ namespace Umbraco.Community.Cloud.HealthChecks
         }
 
         private async Task AddDiskStatusAsync(List<HealthCheckStatus> statuses, string label, StatsServer server, string targetKey)
+        {
+            try
+            {
+                await AddDiskStatusCoreAsync(statuses, label, server, targetKey);
+            }
+            catch (Exception ex)
+            {
+                // One unreadable disk must not hide the others
+                statuses.Add(new HealthCheckStatus($"[{label}] Error reading {_catalog.Find(targetKey)?.DisplayName ?? targetKey} storage usage: {ex.Message}")
+                {
+                    ResultType = StatusResultType.Error,
+                    Description = $"Server: {server.DisplayName}"
+                });
+            }
+        }
+
+        private async Task AddDiskStatusCoreAsync(List<HealthCheckStatus> statuses, string label, StatsServer server, string targetKey)
         {
             var result = await _stats!.GetLatestAsync(targetKey, server.Key);
             if (result == null)

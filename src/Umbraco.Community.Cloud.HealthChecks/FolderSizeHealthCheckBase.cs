@@ -145,10 +145,13 @@ namespace Umbraco.Community.Cloud.HealthChecks
             }
 
             // Name the servers only when there is more than one, so a single server reads as before
-            var results = await GetCurrentServerStatusAsync(servers.Count > 1 ? $"[{servers[0].DisplayName}] " : string.Empty);
+            var results = await GetCurrentServerStatusAsync(string.Empty);
 
             if (servers.Count > 1)
             {
+                // Name this server on every status it produced (errors, pending, missing folder...), not just the size line
+                results = StatusNaming.WithServerName(results, servers[0].DisplayName);
+
                 results.AddRange(await GetOtherServerStatusesAsync(servers));
             }
 
@@ -367,7 +370,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                             ? $"{calculatedAgo.TotalHours:F0} hours ago"
                             : $"{calculatedAgo.TotalDays:F0} days ago";
 
-                var message = $"{serverPrefix}{FolderDisplayName} size: {sizeDisplay} ({fileCount:N0} files) - calculated {ageDisplay}";
+                var message = $"{FolderDisplayName} size: {sizeDisplay} ({fileCount:N0} files) - calculated {ageDisplay}";
 
                 // Only check file age if thresholds are configured
                 double oldestFileAge = 0;
@@ -392,6 +395,8 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 StatusResultType resultType;
                 var warnings = new List<string>();
 
+                ThresholdLevel? evaluatedLevel = null;
+
                 if (UsesStats)
                 {
                     // Shared evaluation (same thresholds the public API exposes). Reuse the cached result (it carries the measured disk quota); only a live scan builds a fresh one
@@ -409,9 +414,11 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     {
                         ThresholdLevel.Error => StatusResultType.Error,
                         ThresholdLevel.Warning => StatusResultType.Warning,
+                        ThresholdLevel.None => StatusResultType.Info, // nothing could be evaluated: never report that as a pass
                         _ => StatusResultType.Success
                     };
                     warnings.AddRange(evaluation.Reasons);
+                    evaluatedLevel = evaluation.Level;
                 }
                 else
                 {
@@ -469,7 +476,9 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     if (displayed != null && displayed.SizeWarningMb == null && displayed.SizeErrorMb == null)
                     {
                         // Disk-usage based target (no size thresholds)
-                        message += " - Within normal limits" + (cachedResult?.DiskUsedPercent is { } usedPercent ? $" (disk {usedPercent:F1}% used)" : string.Empty) + ".";
+                        message += evaluatedLevel == ThresholdLevel.None
+                            ? " - Thresholds could not be evaluated because no disk usage is available (enable background scanning to monitor this)."
+                            : " - Within normal limits" + (cachedResult?.DiskUsedPercent is { } usedPercent ? $" (disk {usedPercent:F1}% used)" : string.Empty) + ".";
                     }
                     else
                     {
