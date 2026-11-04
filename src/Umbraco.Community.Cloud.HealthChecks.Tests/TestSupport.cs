@@ -110,3 +110,19 @@ internal static class Build
         CloudHealthChecksOptions? options = null) =>
         new(store, catalog, disk ?? new FakeDiskReader(), Options.Create(options ?? new CloudHealthChecksOptions()), NullLogger<StatsService>.Instance);
 }
+
+internal sealed class FakeMachineIds : IKnownMachineIds
+{
+    public List<string> Ids { get; } = new();
+
+    public bool Throw { get; set; }
+
+    public Task<IReadOnlyList<string>> GetAsync() =>
+        Throw ? throw new InvalidOperationException("db down") : Task.FromResult<IReadOnlyList<string>>(Ids);
+}
+
+internal static class ServersBuild
+{
+    public static StatsServers Servers(IHealthCheckResultStore store, IStatsTargetCatalog catalog, FakeMachineIds? ids = null, string name = "THIS/site") =>
+        new(store, catalog, ids ?? new FakeMachineIds(), name, NullLogger<StatsServers>.Instance);
+}

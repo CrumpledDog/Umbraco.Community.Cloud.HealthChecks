@@ -184,7 +184,7 @@ public class HostingPlatformTests
             var catalog = new StatsTargetCatalog(root.Path, options.Value, "m", Build.OffAzure(), platform, _ => false);
             var check = new UmbracoLogsFolderSizeHealthCheck(
                 store, new FakeHostEnvironment { ContentRootPath = root.Path }, options,
-                Build.Service(store, catalog, disk, options.Value), new StatsThresholds(options, catalog, disk), catalog);
+                Build.Service(store, catalog, disk, options.Value), new StatsThresholds(options, catalog, disk), catalog, ServersBuild.Servers(store, catalog));
             Assert.Equal(expected, check.Group);
         }
 

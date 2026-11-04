@@ -34,8 +34,9 @@ namespace Umbraco.Community.Cloud.HealthChecks
             IOptions<CloudHealthChecksOptions> options,
             IStatsService stats,
             IStatsTargetCatalog catalog,
-            IStatsThresholds thresholds)
-            : base(store, options, stats, thresholds)
+            IStatsThresholds thresholds,
+            IStatsServers servers)
+            : base(store, options, stats, thresholds, servers, catalog)
         {
             _catalog = catalog;
             _thresholds = thresholds;

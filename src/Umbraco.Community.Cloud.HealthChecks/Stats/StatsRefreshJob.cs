@@ -16,6 +16,7 @@ internal sealed class StatsRefreshJob : IRecurringBackgroundJob
     private static readonly TimeSpan DefaultPeriod = TimeSpan.FromHours(6);
 
     private readonly StatsService _stats;
+    private readonly StatsServers _servers;
     private readonly IStatsTargetCatalog _catalog;
     private readonly CloudHealthChecksOptions _options;
     private readonly ILogger<StatsRefreshJob> _logger;
@@ -25,11 +26,13 @@ internal sealed class StatsRefreshJob : IRecurringBackgroundJob
 
     public StatsRefreshJob(
         StatsService stats,
+        StatsServers servers,
         IStatsTargetCatalog catalog,
         IOptions<CloudHealthChecksOptions> options,
         ILogger<StatsRefreshJob> logger)
     {
         _stats = stats;
+        _servers = servers;
         _catalog = catalog;
         _options = options.Value;
         _logger = logger;
@@ -67,12 +70,29 @@ internal sealed class StatsRefreshJob : IRecurringBackgroundJob
             return;
         }
 
+        // Tell the other servers who this one is (its site key locates its shared results)
+        try
+        {
+            await _servers.PublishCurrentAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not publish this server's identity");
+        }
+
         foreach (var target in _catalog.Targets.Where(t => t.AppliesToThisHost))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             try
             {
+                // A folder that does not exist here (e.g. no NuGet cache on this host) is not a failure
+                if (target.Kind == StatsKind.Folder && !Directory.Exists(target.Path))
+                {
+                    _logger.LogDebug("Skipping {Target}: folder not found at {Path}", target.Key, target.Path);
+                    continue;
+                }
+
                 // Disk usage is a cheap quota read: no claim. Per instance folders are this server's alone.
                 var needsClaim = target.Kind == StatsKind.Folder && target.Scope == StatsScope.Shared;
                 if (needsClaim && !await _stats.TryClaimSharedAsync(target, Period))

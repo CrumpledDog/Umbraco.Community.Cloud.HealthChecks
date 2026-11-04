@@ -39,6 +39,8 @@ This approach is especially valuable for large folders (NuGet cache, logs) where
   - Uses background scanning with distributed cache
   - Displays calculation timestamp
   
+- **Local Temp Folder Size** - Tracks the size of each server's local temp folder and the usage of its drive (Umbraco Cloud and Azure Web Apps only; per instance)
+
 - **Umbraco Logs Folder Size** - Tracks the size of Umbraco log files and the age of the oldest one (applies everywhere, including VMs and containers)
   - Uses background scanning with distributed cache
   - Displays calculation timestamp
@@ -51,6 +53,15 @@ The package detects where it is running, so the same package works on any infras
 - **VMs, containers and anywhere else**: only the Umbraco Logs check applies (group **Hosting**). The Azure-specific checks (storage quotas, NuGet cache under `C:home`) would only report that they do not apply, so they are left out.
 
 `CloudHealthChecks:LocalTestMode` still makes every check run locally. The detected platform is available as `IStatsTargetCatalog.Platform`.
+
+### Reporting for all servers
+
+When more than one server is known, each check reports every server, named, instead of only the one serving the backoffice request:
+
+- Servers are listed from Umbraco's own server registration table (`umbracoLastSynced`, the same source the Crumpled Hosting Kit uses). Each server's refresh job also publishes its site key and name, so servers that have never reported (or were decommissioned) are left out.
+- Names follow the hosting kit: the machine name plus `/{SiteName}` when `Umbraco:CMS:Hosting:SiteName` is set. When it is not set on Azure App Service the App Service site name (and slot) is used instead, so servers on one plan stay distinguishable.
+- Shared disks (logs, NuGet cache, `C:\home`) are reported once per site, naming the site and its servers; per-instance folders and disks (local temp, `C:\local`, the temp drive) once per server. The current server is listed first.
+- With a single server the output is unchanged.
 
 ## Installation
 
@@ -140,6 +151,11 @@ public interface IStatsThresholds
 {
     TargetThresholds Resolve(string targetKey, long? measuredDiskTotalBytes = null); // configured values or the adaptive NuGet defaults (from the measured site quota)
     ThresholdEvaluation Evaluate(string targetKey, FolderSizeResult? result, DateTime? nowUtc = null); // Level None/Ok/Warning/Error + reasons
+}
+
+public interface IStatsServers
+{
+    Task<IReadOnlyList<StatsServer>> GetServersAsync(CancellationToken ct = default); // known servers: ServerKey (MachineId + SiteKey), DisplayName, IsCurrent, LastReportedAt
 }
 
 public interface IDiskUsageReader
