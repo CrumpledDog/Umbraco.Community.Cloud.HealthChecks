@@ -158,6 +158,17 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 return;
             }
 
+            if (result.DiskUsedPercent == null)
+            {
+                // A stored result without quota numbers must not read as an empty, healthy disk
+                statuses.Add(new HealthCheckStatus($"[{label}] {name} storage usage is not available for that server")
+                {
+                    ResultType = StatusResultType.Info,
+                    Description = $"Server: {server.DisplayName}"
+                });
+                return;
+            }
+
             var total = result.DiskTotalBytes.GetValueOrDefault() / (1024.0 * 1024.0);
             var free = result.DiskFreeBytes.GetValueOrDefault() / (1024.0 * 1024.0);
             var evaluation = _thresholds!.Evaluate(targetKey, result);

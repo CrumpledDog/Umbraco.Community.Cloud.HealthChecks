@@ -260,8 +260,9 @@ public class MultiServerHealthCheckTests
         var disk = new FakeDiskReader();
         var check = new LocalTempFolderSizeHealthCheck(
             store, options, Build.Service(store, catalog, disk, options.Value), new StatsThresholds(options, catalog, disk),
-            ServersBuild.Servers(store, catalog), catalog);
-
+        ServersBuild.Servers(store, catalog), catalog)
+        { DiskReader = new FakeDiskReader { Usage = null } }
+        ;
         var status = Assert.Single(await check.GetStatusAsync());
 
         Assert.Equal(StatusResultType.Info, status.ResultType);
@@ -392,5 +393,116 @@ public class OverdueScanTests
 
         Assert.Equal(StatusResultType.Info, status.ResultType);
         Assert.DoesNotContain("has not started", status.Message);
+    }
+}
+
+public class ThirdReviewFixTests
+{
+    [Fact]
+    public async Task Local_temp_without_background_scanning_evaluates_the_live_disk_when_it_can_be_read()
+    {
+        using var root = new TempFolder();
+        root.AddFile("tmp/x.bin", 1);
+        var store = new InMemoryResultStore();
+        var options = Options.Create(new CloudHealthChecksOptions { LocalTestMode = true, BackgroundScan = { Enabled = false } });
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1", Path.Combine(root.Path, "tmp"));
+        var disk = new FakeDiskReader();
+        var check = new LocalTempFolderSizeHealthCheck(
+            store, options, Build.Service(store, catalog, disk, options.Value), new StatsThresholds(options, catalog, disk),
+            ServersBuild.Servers(store, catalog), catalog)
+        { DiskReader = new FakeDiskReader { Usage = new DiskUsage(1000, 50) } };
+
+        var status = Assert.Single(await check.GetStatusAsync());
+
+        Assert.Equal(StatusResultType.Error, status.ResultType); // 95% used, error threshold 90%
+    }
+
+    [Fact]
+    public async Task Remote_server_whose_disk_usage_is_unavailable_is_info_not_success()
+    {
+        using var root = new TempFolder();
+        root.AddFile("tmp/x.bin", 1);
+        var store = new InMemoryResultStore();
+        var options = Options.Create(new CloudHealthChecksOptions { LocalTestMode = true });
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1", Path.Combine(root.Path, "tmp"));
+        var disk = new FakeDiskReader();
+        var ids = new FakeMachineIds();
+        ids.Ids.AddRange(new[] { "m1", "m2" });
+        store.Items[StatsServers.IdentityName("m2")] = new FolderSizeResult { MachineId = "m2", SiteKey = "site1", ServerName = "WEB2/site1", CalculatedAt = DateTime.UtcNow };
+        store.Items["stats:instance:m1:local-temp"] = new FolderSizeResult { SizeInBytes = 5, CalculatedAt = DateTime.UtcNow, DiskTotalBytes = 1000, DiskFreeBytes = 800 };
+        store.Items["stats:instance:m2:local-temp"] = new FolderSizeResult { SizeInBytes = 6, CalculatedAt = DateTime.UtcNow }; // no quota numbers
+        var check = new LocalTempFolderSizeHealthCheck(
+            store, options, Build.Service(store, catalog, disk, options.Value), new StatsThresholds(options, catalog, disk),
+            ServersBuild.Servers(store, catalog, ids, "WEB1/site1"), catalog);
+
+        var statuses = (await check.GetStatusAsync()).ToList();
+
+        Assert.Equal(StatusResultType.Info, statuses[1].ResultType);
+        Assert.Contains("could not be evaluated", statuses[1].Message);
+    }
+
+    [Fact]
+    public async Task Azure_storage_reports_a_stored_result_without_quota_numbers_as_unavailable()
+    {
+        using var root = new TempFolder();
+        Directory.CreateDirectory(Path.Combine(root.Path, "wwwroot"));
+        var store = new InMemoryResultStore();
+        var options = Options.Create(new CloudHealthChecksOptions { LocalTestMode = true });
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1");
+        var disk = new FakeDiskReader { Usage = new DiskUsage(1000, 500) };
+        var ids = new FakeMachineIds();
+        ids.Ids.AddRange(new[] { "m1", "m3" });
+        store.Items[StatsServers.IdentityName("m3")] = new FolderSizeResult { MachineId = "m3", SiteKey = "site2", ServerName = "FE3/site2", CalculatedAt = DateTime.UtcNow };
+        store.Items["stats:shared:site2:home-disk"] = new FolderSizeResult { CalculatedAt = DateTime.UtcNow };
+        var check = new AzureStorageHealthCheck(
+            options, new FakeHostEnvironment { ContentRootPath = root.Path }, disk, catalog,
+            ServersBuild.Servers(store, catalog, ids, "WEB1/site1"),
+            Build.Service(store, catalog, disk, options.Value), new StatsThresholds(options, catalog, disk));
+
+        var statuses = (await check.GetStatusAsync()).ToList();
+
+        var home = Assert.Single(statuses, s => s.Message.StartsWith("[site site2 (FE3/site2)]"));
+        Assert.Equal(StatusResultType.Info, home.ResultType);
+        Assert.Contains("not available", home.Message);
+    }
+
+    [Fact]
+    public async Task One_unreadable_identity_does_not_hide_the_other_servers()
+    {
+        using var root = new TempFolder();
+        var inner = new InMemoryResultStore();
+        var store = new ThrowingStore(inner, StatsServers.IdentityName("m2"));
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1");
+        var ids = new FakeMachineIds();
+        ids.Ids.AddRange(new[] { "m1", "m2", "m3" });
+        inner.Items[StatsServers.IdentityName("m3")] = new FolderSizeResult { MachineId = "m3", SiteKey = "site2", ServerName = "FE3/site2", CalculatedAt = DateTime.UtcNow };
+
+        var servers = await ServersBuild.Servers(store, catalog, ids).GetServersAsync();
+
+        Assert.Equal(new[] { "m1", "m3" }, servers.Select(s => s.Key.MachineId));
+    }
+
+    [Fact]
+    public async Task Identity_left_by_a_previous_process_does_not_count_as_the_job_having_started()
+    {
+        using var root = new TempFolder();
+        root.AddFile("umbraco/Logs/a.txt", 1);
+        var store = new InMemoryResultStore();
+        var options = Options.Create(new CloudHealthChecksOptions { LocalTestMode = true });
+        var catalog = Build.TestModeCatalog(root.Path, "m1", "site1");
+        var disk = new FakeDiskReader();
+        var servers = ServersBuild.Servers(store, catalog, null, "WEB1/site1");
+        servers.UtcNow = () => DateTime.UtcNow.AddHours(-3); // published before this 30 minute old process started
+        await servers.PublishCurrentAsync();
+        servers.UtcNow = () => DateTime.UtcNow;
+
+        var check = new OverdueLikeCheck(
+            Path.Combine(root.Path, "umbraco", "Logs"), store, options, Build.Service(store, catalog, disk, options.Value),
+            new StatsThresholds(options, catalog, disk), servers, catalog);
+
+        var status = Assert.Single(await check.GetStatusAsync());
+
+        Assert.Equal(StatusResultType.Warning, status.ResultType);
+        Assert.Contains("has not started", status.Message);
     }
 }

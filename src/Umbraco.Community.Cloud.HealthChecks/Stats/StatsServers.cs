@@ -149,7 +149,18 @@ public sealed class StatsServers : IStatsServers
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var identity = await _store.GetAsync(IdentityName(id)).WaitAsync(cancellationToken);
+            FolderSizeResult? identity;
+            try
+            {
+                identity = await _store.GetAsync(IdentityName(id)).WaitAsync(cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // One unreadable identity must not hide the other servers
+                _logger.LogWarning(ex, "Could not read the identity of server {MachineId}", id);
+                continue;
+            }
+
             if (identity?.SiteKey == null)
             {
                 continue;

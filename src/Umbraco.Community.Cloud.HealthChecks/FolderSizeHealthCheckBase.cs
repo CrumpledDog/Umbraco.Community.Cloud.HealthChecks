@@ -67,6 +67,21 @@ namespace Umbraco.Community.Cloud.HealthChecks
         /// <summary>How long this process has been running (virtual so the overdue-scan hint can be tested).</summary>
         protected virtual TimeSpan ProcessUptime => DateTime.UtcNow - System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime();
 
+        internal IDiskUsageReader DiskReader { get; set; } = new DiskUsageReader();
+
+        // A live scan (background scanning disabled) has no stored quota: read it now so percentage thresholds can be evaluated
+        private FolderSizeResult WithLiveDisk(FolderSizeResult result, string path)
+        {
+            var usage = DiskReader.Read(path);
+            if (usage != null)
+            {
+                result.DiskTotalBytes = usage.Value.TotalBytes;
+                result.DiskFreeBytes = usage.Value.FreeBytes;
+            }
+
+            return result;
+        }
+
         private bool UsesStats => _stats != null && _thresholds != null && !string.IsNullOrEmpty(StatsTargetKey);
 
         private bool ReportsServers => UsesStats && _servers != null && _catalog != null && _options.BackgroundScan.Enabled;
@@ -225,7 +240,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
             var message = $"[{label}] {FolderDisplayName} size: {size} ({result.FileCount:N0} files) - calculated {agoText}";
             message += evaluation.Reasons.Count > 0
                 ? " - " + string.Join(". ", evaluation.Reasons) + "."
-                : evaluation.Level == ThresholdLevel.Ok ? " - Within normal limits." : string.Empty;
+                : evaluation.Level == ThresholdLevel.Ok ? " - Within normal limits." : evaluation.Level == ThresholdLevel.None ? " - Thresholds could not be evaluated (no disk usage available)." : string.Empty;
 
             if (result.DiskUsedPercent is { } used)
             {
@@ -238,6 +253,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 {
                     ThresholdLevel.Error => StatusResultType.Error,
                     ThresholdLevel.Warning => StatusResultType.Warning,
+                    ThresholdLevel.None => StatusResultType.Info, // nothing could be evaluated (e.g. that server's disk usage is unavailable)
                     _ => StatusResultType.Success
                 },
                 Description = $"Server: {server.DisplayName} (machine {server.Key.MachineId}, site {server.Key.SiteKey})"
@@ -329,7 +345,8 @@ namespace Umbraco.Community.Cloud.HealthChecks
                             // well after the start-up delay the job has not started here. (A slow first scan is not "overdue":
                             // the identity exists by then.)
                             var self = (await _servers.GetServersAsync())[0];
-                            overdue = self.LastReportedAt == null;
+                            // An identity published by a previous process (it survives restarts) does not count
+                            overdue = self.LastReportedAt == null || self.LastReportedAt < DateTime.UtcNow - uptime;
                         }
 
                         if (overdue)
@@ -414,13 +431,15 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     // Shared evaluation (same thresholds the public API exposes). Reuse the cached result (it carries the measured disk quota); only a live scan builds a fresh one
                     var evaluation = _thresholds!.Evaluate(
                         StatsTargetKey!,
-                        cachedResult ?? new FolderSizeResult
-                        {
-                            SizeInBytes = sizeInBytes,
-                            FileCount = fileCount,
-                            OldestFileLastWriteTime = oldestFileLastWriteTime,
-                            CalculatedAt = calculatedAt
-                        });
+                        cachedResult ?? WithLiveDisk(
+                            new FolderSizeResult
+                            {
+                                SizeInBytes = sizeInBytes,
+                                FileCount = fileCount,
+                                OldestFileLastWriteTime = oldestFileLastWriteTime,
+                                CalculatedAt = calculatedAt
+                            },
+                            folderPath));
 
                     resultType = evaluation.Level switch
                     {
