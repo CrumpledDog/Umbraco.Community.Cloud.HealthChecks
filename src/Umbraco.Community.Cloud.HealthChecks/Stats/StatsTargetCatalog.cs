@@ -84,7 +84,7 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
 
         // The disk targets use the parent of ...\Temp (D:\local) as the path whose quota is read.
         var tempDiskPath = tempPath.EndsWith(@"\Temp", StringComparison.OrdinalIgnoreCase)
-            ? Directory.GetParent(tempPath)?.FullName ?? tempPath
+            ? tempPath[..^5]
             : tempPath;
 
         var homeDiskPath = testMode ? contentRoot : HomeDirectory;
