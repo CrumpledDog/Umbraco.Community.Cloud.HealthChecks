@@ -106,6 +106,7 @@ jobs:
     - uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        dotnet-quality: preview
 
     # This package was generated without a Client/ (backoffice UI) - all these steps self-skip via
     # this hashFiles guard rather than the workflow needing two variants.
@@ -240,6 +241,7 @@ jobs:
     - uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        dotnet-quality: preview
 
     - name: Cache NuGet
       uses: actions/cache@v6
@@ -363,6 +365,7 @@ jobs:
     - uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
+        dotnet-quality: preview
 
     - name: Verify branch has not advanced
       env:

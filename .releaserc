@@ -1,8 +1,8 @@
 {
   "branches": [
-    "release/v1",
-    { "name": "beta/v1", "prerelease": "beta" },
-    { "name": "develop/v1", "prerelease": "alpha" }
+    "release/v2",
+    { "name": "beta/v2", "prerelease": "beta" },
+    { "name": "develop/v2", "prerelease": "alpha" }
   ],
   "tagFormat": "v${version}",
   "plugins": [
