@@ -11,7 +11,7 @@ namespace Umbraco.Community.Cloud.HealthChecks.Stats;
 /// never runs on, so their own disks would never be measured.
 /// Shared folders are measured once per site per interval (best-effort claim); per instance folders and disk usage on each server.
 /// </summary>
-internal sealed class StatsRefreshJob : IRecurringBackgroundJob
+internal sealed class StatsRefreshJob : RecurringBackgroundJobBase
 {
     private static readonly TimeSpan DefaultPeriod = TimeSpan.FromHours(6);
 
@@ -30,6 +30,7 @@ internal sealed class StatsRefreshJob : IRecurringBackgroundJob
         IStatsTargetCatalog catalog,
         IOptions<CloudHealthChecksOptions> options,
         ILogger<StatsRefreshJob> logger)
+        : base(PeriodFrom(options.Value))
     {
         _stats = stats;
         _servers = servers;
@@ -38,22 +39,26 @@ internal sealed class StatsRefreshJob : IRecurringBackgroundJob
         _logger = logger;
     }
 
-    public TimeSpan Period => _options.BackgroundScan.ScanIntervalHours > 0
-        ? TimeSpan.FromHours(_options.BackgroundScan.ScanIntervalHours)
+    private static TimeSpan PeriodFrom(CloudHealthChecksOptions options) => options.BackgroundScan.ScanIntervalHours > 0
+        ? TimeSpan.FromHours(options.BackgroundScan.ScanIntervalHours)
         : DefaultPeriod;
 
-    public TimeSpan Delay => TimeSpan.FromMinutes(2) + _jitter;
+    /// <inheritdoc />
+    public override TimeSpan Period => PeriodFrom(_options);
 
-    public ServerRole[] ServerRoles => new[] { ServerRole.Single, ServerRole.SchedulingPublisher, ServerRole.Subscriber };
+    /// <inheritdoc />
+    public override TimeSpan Delay => TimeSpan.FromMinutes(2) + _jitter;
 
-    // The period never changes on this job
-    public event EventHandler PeriodChanged { add { } remove { } }
+    /// <inheritdoc />
+    public override ServerRole[] ServerRoles => new[] { ServerRole.Single, ServerRole.SchedulingPublisher, ServerRole.Subscriber };
 
-    public async Task RunJobAsync()
+
+    /// <inheritdoc />
+    public override async Task RunJobAsync(CancellationToken cancellationToken)
     {
         try
         {
-            await RefreshAsync(CancellationToken.None);
+            await RefreshAsync(cancellationToken);
         }
         catch (Exception ex)
         {

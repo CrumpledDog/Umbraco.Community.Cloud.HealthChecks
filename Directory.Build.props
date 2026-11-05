@@ -2,6 +2,6 @@
   <PropertyGroup>
     <!-- Set to 18 on the develop/v2 branch line to build against Umbraco CMS 18 instead. See
          Directory.Packages.props, which holds the matching Umbraco.Cms.* version pins. -->
-    <UmbracoTargetMajor>17</UmbracoTargetMajor>
+    <UmbracoTargetMajor>19</UmbracoTargetMajor>
   </PropertyGroup>
 </Project>

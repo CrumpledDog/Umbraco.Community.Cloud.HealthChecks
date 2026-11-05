@@ -14,9 +14,9 @@
     is always correct here - bump the upper bound too if this template line is ever retargeted.
   -->
   <ItemGroup>
-    <PackageVersion Include="Umbraco.Cms" Version="[17.7.0,18.0.0)" />
-    <PackageVersion Include="Umbraco.Cms.DevelopmentMode.Backoffice" Version="[17.7.0,18.0.0)" />
-    <PackageVersion Include="Umbraco.Cms.Web.Common" Version="[17.0.0,18.0.0)" />
+    <PackageVersion Include="Umbraco.Cms" Version="19.0.0-beta1" />
+    <PackageVersion Include="Umbraco.Cms.DevelopmentMode.Backoffice" Version="19.0.0-beta1" />
+    <PackageVersion Include="Umbraco.Cms.Web.Common" Version="19.0.0-beta1" />
     <PackageVersion Include="Microsoft.ICU.ICU4C.Runtime" Version="72.1.0.3" />
   </ItemGroup>
 

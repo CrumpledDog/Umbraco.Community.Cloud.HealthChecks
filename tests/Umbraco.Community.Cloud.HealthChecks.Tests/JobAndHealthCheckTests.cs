@@ -45,7 +45,7 @@ public class JobTests
         root.AddFile("umbraco/Logs/a.txt", 10);
         root.AddFile("tmp/t.bin", 20);
 
-        await job.RunJobAsync();
+        await job.RunJobAsync(CancellationToken.None);
 
         Assert.Contains("stats:shared:site1:umbraco-logs", store.Items.Keys);
         Assert.Contains("stats:instance:m1:local-temp", store.Items.Keys);
@@ -63,7 +63,7 @@ public class JobTests
         root.AddFile("tmp/t.bin", 20);
         store.Items["stats-claim:site1:umbraco-logs"] = new FolderSizeResult { CalculatedAt = DateTime.UtcNow, MachineId = "other" };
 
-        await job.RunJobAsync();
+        await job.RunJobAsync(CancellationToken.None);
 
         Assert.DoesNotContain("stats:shared:site1:umbraco-logs", store.Items.Keys);
         Assert.Contains("stats:instance:m1:local-temp", store.Items.Keys);
@@ -77,7 +77,7 @@ public class JobTests
         using var _r = root;
         root.AddFile("umbraco/Logs/a.txt", 10);
         root.AddFile("tmp/t.bin", 20);
-        await job.RunJobAsync();
+        await job.RunJobAsync(CancellationToken.None);
 
         var scans = 0;
         svc.Scanner = (p, _, _) =>
@@ -85,7 +85,7 @@ public class JobTests
             if (p.StartsWith(root.Path, StringComparison.OrdinalIgnoreCase)) scans++;
             return new FolderSizeResult();
         };
-        await job.RunJobAsync();
+        await job.RunJobAsync(CancellationToken.None);
 
         // only the per-instance folder (temp) is scanned again; the shared one is claimed/fresh
         Assert.Equal(1, scans);
@@ -98,7 +98,7 @@ public class JobTests
         using var _r = root;
         root.AddFile("umbraco/Logs/a.txt", 10);
 
-        await job.RunJobAsync();
+        await job.RunJobAsync(CancellationToken.None);
 
         Assert.Empty(store.Items);
     }
@@ -120,7 +120,7 @@ public class JobTests
         slow.Scanner = svc.Scanner;
         var timedOutJob = new StatsRefreshJob(slow, ServersBuild.Servers(store, Build.TestModeCatalog(root.Path, "m1", "site1")), Build.TestModeCatalog(root.Path, "m1", "site1"), Options.Create(o), NullLogger<StatsRefreshJob>.Instance);
 
-        await timedOutJob.RunJobAsync();
+        await timedOutJob.RunJobAsync(CancellationToken.None);
 
         Assert.False(store.Items["stats:shared:site1:umbraco-logs"].Success);
     }

@@ -7,7 +7,7 @@ concurrency:
 env:
   PATH_TO_TESTSITE: "src/Umbraco.Community.Cloud.HealthChecks.DemoSite"
   PATH_TO_CLIENT: "src/Umbraco.Community.Cloud.HealthChecks/Client"
-  DOTNET_VERSION: '10'
+  DOTNET_VERSION: '11.0.x'
   PACKABLE_PROJECTS: "src/Umbraco.Community.Cloud.HealthChecks/Umbraco.Community.Cloud.HealthChecks.csproj"
 
 on:
