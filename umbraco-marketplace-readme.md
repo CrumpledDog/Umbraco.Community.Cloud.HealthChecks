@@ -178,7 +178,7 @@ Notes:
 
 ## Requirements
 
-- Umbraco CMS v17+
+- Umbraco CMS v17 or v18 (the v1 line; Umbraco 19 is supported from v2)
 - Umbraco Cloud, Azure Web Apps (Windows or Linux), or any other host (VM, container) for the Umbraco Logs check
 
 ## Proactive Monitoring
