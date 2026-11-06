@@ -5,20 +5,53 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PATH_TO_EXTENSION: "src/Umbraco.Community.Cloud.HealthChecks"
+  PATH_TO_TESTSITE: "src/Umbraco.Community.Cloud.HealthChecks.DemoSite"
+  PATH_TO_CLIENT: "src/Umbraco.Community.Cloud.HealthChecks/Client"
   DOTNET_VERSION: '10'
+  PACKABLE_PROJECTS: "src/Umbraco.Community.Cloud.HealthChecks/Umbraco.Community.Cloud.HealthChecks.csproj"
 
 on:
   push:
-    branches: [ "develop/v1", "release/v1", "feature/v1/*", "hotfix/v1/*" ]
+    branches:
+      - "develop/v1"
+      - "release/v1"
+      - "beta/v1"
+      - "feature/v1/**"
+      - "hotfix/v1/**"
+      - "develop/v2"
+      - "release/v2"
+      - "beta/v2"
+      - "feature/v2/**"
+      - "hotfix/v2/**"
   pull_request:
-    branches: [ "develop/v1", "release/v1", "feature/v1/*", "hotfix/v1/*" ]
+    branches:
+      - develop/v1
+      - release/v1
+      - beta/v1
+      - feature/v1/**
+      - hotfix/v1/**
+      - develop/v2
+      - release/v2
+      - beta/v2
+      - feature/v2/**
+      - hotfix/v2/**
   workflow_dispatch:
+    inputs:
+      force_codegen:
+        description: 'Force regeneration of the OpenAPI backoffice client (ignore cache)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   setup:
     name: Setup
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      packages: write
     outputs:
       semver: ${{ steps.set-version.outputs.version }}
       prerelease_id: ${{ steps.calculate-branch.outputs.prerelease_id }}
@@ -27,23 +60,27 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fetch all tags
-        run: git fetch --force --tags
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git fetch --force --tags
 
       - name: Calculate Branch Slug
         id: calculate-branch
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
         run: |
-          BRANCH_NAME="${{ github.ref_name }}"
           echo "Current branch: $BRANCH_NAME"
-          
+
           if [[ "$BRANCH_NAME" == hotfix/* ]] || [[ "$BRANCH_NAME" == feature/* ]]; then
             # Convert branch name to valid semver prerelease identifier
             # Prefix with "00-" to ensure these versions sort before alpha/beta/rc
             # Truncate to max 15 chars total to keep NuGet paths short
             # Replace feature->ft and hotfix->hf to save more space
             # Trim trailing hyphen if present after truncation
-            BRANCH_SLUG=$(echo "$BRANCH_NAME" | sed 's/feature\//ft-/g; s/hotfix\//hf-/g; s/\//-/g' | cut -c 1-12 | sed 's/-$//')
+            BRANCH_SLUG=$(echo "$BRANCH_NAME" | sed 's/feature\//ft-/g; s/hotfix\//hf-/g; s/\//-/g' | sed 's/[^A-Za-z0-9-]/-/g' | cut -c 1-12 | sed 's/-$//')
             PRERELEASE_ID="00-${BRANCH_SLUG}"
             echo "Branch slug: $BRANCH_SLUG"
             echo "Prerelease ID: $PRERELEASE_ID"
@@ -55,20 +92,18 @@ jobs:
 
       - name: Update .releaserc for current branch
         if: ${{ steps.calculate-branch.outputs.prerelease_id != '' }}
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          PRERELEASE_ID: ${{ steps.calculate-branch.outputs.prerelease_id }}
         run: |
-          BRANCH_NAME="${{ github.ref_name }}"
-          PRERELEASE_ID="${{ steps.calculate-branch.outputs.prerelease_id }}"
-          
-          echo "Adding branch config: $BRANCH_NAME with prerelease: $PRERELEASE_ID"
-          
-          # Read current .releaserc, add the branch entry, and save
+
           jq --arg name "$BRANCH_NAME" --arg prerelease "$PRERELEASE_ID" \
             '.branches += [{"name": $name, "prerelease": $prerelease}]' \
             .releaserc > .releaserc.tmp && mv .releaserc.tmp .releaserc
-          
+
           echo "Updated .releaserc:"
           cat .releaserc
-          
+
       - name: Semantic Release
         id: semantic
         uses: cycjimmy/semantic-release-action@v6
@@ -81,7 +116,7 @@ jobs:
             @semantic-release/commit-analyzer
             @semantic-release/release-notes-generator
             @semantic-release/github
-            conventional-changelog-conventionalcommits
+            conventional-changelog-conventionalcommits@^9
 
       - name: Set Version
         id: set-version
@@ -89,10 +124,8 @@ jobs:
           if [ -n "${{ steps.semantic.outputs.new_release_version }}" ]; then
             echo "version=${{ steps.semantic.outputs.new_release_version }}" >> $GITHUB_OUTPUT
           else
-            # Get the latest tag from git
             LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
             if [ -n "$LATEST_TAG" ]; then
-              # Remove 'v' prefix if present
               LATEST_VERSION=${LATEST_TAG#v}
               echo "version=${LATEST_VERSION}-dev.${{ github.run_number }}" >> $GITHUB_OUTPUT
             else
@@ -100,21 +133,13 @@ jobs:
             fi
           fi
 
-      - name: Echo the version
-        run: |
-          echo "Version to use: '${{ steps.set-version.outputs.version }}'"
-          echo "New release version: '${{ steps.semantic.outputs.new_release_version }}'"
-          echo "New release major: '${{ steps.semantic.outputs.new_release_major_version }}'"
-          echo "New release minor: '${{ steps.semantic.outputs.new_release_minor_version }}'"
-          echo "New release patch: '${{ steps.semantic.outputs.new_release_patch_version }}'"
-          echo "Last release version: '${{ steps.semantic.outputs.last_release_version }}'"
-          echo "New release published: '${{ steps.semantic.outputs.new_release_published }}'"
-  
   build:
-    name: Build, Test and Package
+    name: Build, Run, CodeGen and Package
     runs-on: ubuntu-latest
     needs: setup
-    timeout-minutes: 5
+    timeout-minutes: 10
+    permissions:
+      contents: read
     steps:
     - uses: actions/checkout@v5
       with:
@@ -124,51 +149,323 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
+    # This package was generated without a Client/ (backoffice UI) - all these steps self-skip via
+    # this hashFiles guard rather than the workflow needing two variants.
+    - name: Check for Client
+      id: has-client
+      shell: bash
+      run: echo "present=${{ hashFiles(format('{0}/package.json', env.PATH_TO_CLIENT)) != '' }}" >> $GITHUB_OUTPUT
+
     - name: Setup Node.js environment
-      uses: actions/setup-node@v5
+      if: steps.has-client.outputs.present == 'true'
+      uses: actions/setup-node@v6
       with:
         node-version: 'lts/*'
         cache: 'npm'
-        cache-dependency-path: '${{env.PATH_TO_EXTENSION}}/Client/package-lock.json'
+        cache-dependency-path: '${{ env.PATH_TO_CLIENT }}/package-lock.json'
 
-    - name: Install dependencies
-      working-directory: ./${{env.PATH_TO_EXTENSION}}/Client
+    - name: Install Client dependencies
+      if: steps.has-client.outputs.present == 'true'
+      working-directory: ${{ env.PATH_TO_CLIENT }}
       run: npm ci
 
-    - name: Cache NuGet
-      id: nuget-packages
-      uses: actions/cache@v5
+    - name: Cache generated OpenAPI client
+      id: codegen-cache
+      if: steps.has-client.outputs.present == 'true'
+      uses: actions/cache@v6
       with:
-        path: ~/.nuget/packages
-        key: nuget-cache-${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj*') }}
-        restore-keys: |
-          nuget-cache-${{ runner.os }}-nuget-
+        path: ${{ env.PATH_TO_CLIENT }}/src/api
+        key: codegen-${{ github.ref_name }}-${{ hashFiles('src/Umbraco.Community.Cloud.HealthChecks/Client/src/**', 'src/Umbraco.Community.Cloud.HealthChecks/Client/public/**', 'src/Umbraco.Community.Cloud.HealthChecks/Client/scripts/**', 'src/Umbraco.Community.Cloud.HealthChecks/Client/package-lock.json') }}
 
     - name: Update Version Files
       id: update-version
       uses: CrumpledDog/Crumpled.Umbraco.Package.Actions/update-version-files@main
       with:
         semver: ${{ needs.setup.outputs.semver }}
-        path-to-extension: ${{ env.PATH_TO_EXTENSION }}
+        path-to-extension: src/Umbraco.Community.Cloud.HealthChecks
+
+    - name: Dotnet Format check
+      run: dotnet format --verify-no-changes --verbosity diagnostic
+
+    - name: Run Unit Tests
+      run: dotnet test tests/Umbraco.Community.Cloud.HealthChecks.Tests/Umbraco.Community.Cloud.HealthChecks.Tests.csproj --configuration Release --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
+
+    - name: Cache NuGet
+      uses: actions/cache@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-cache-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.csproj*') }}
+        restore-keys: |
+          nuget-cache-${{ runner.os }}-${{ github.ref_name }}-
+          nuget-cache-${{ runner.os }}-nuget-
+
+    - name: Build Project
+      if: steps.codegen-cache.outputs.cache-hit != 'true' || inputs.force_codegen == true
+      working-directory: ${{ env.PATH_TO_TESTSITE }}
+      run: dotnet build -c Release
+
+    - name: Start Project
+      if: steps.codegen-cache.outputs.cache-hit != 'true' || inputs.force_codegen == true
+      working-directory: ${{ github.workspace }}/${{ env.PATH_TO_TESTSITE }}
+      shell: bash
+      run: |
+        nohup dotnet run --no-build --no-restore -c Release > ../../app.log 2> ../../app-errors.log &
+        echo "DOTNET_PID=$!" >> $GITHUB_ENV
+        sleep 5
+
+    - name: Health Check
+      if: steps.codegen-cache.outputs.cache-hit != 'true' || inputs.force_codegen == true
+      shell: bash
+      run: |
+        # Polls Umbraco's own (unauthenticated) server status endpoint: this package has no API or OpenAPI document of
+        # its own to poll, and the site root depends on Umbraco having routable content, which races with a fresh
+        # unattended install and can throw ("No UmbracoRouteValues feature was found") if hit before content is ready.
+        for i in {1..30}; do
+          if curl -k -s --max-time 5 https://localhost:44302/umbraco/management/api/v1/server/status | grep -q '"serverStatus":"Run"'; then
+            echo "Umbraco is responding!"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "Umbraco failed to respond after 30 attempts"
+        exit 1
+
+    - name: CodeGen
+      if: steps.has-client.outputs.present == 'true' && (steps.codegen-cache.outputs.cache-hit != 'true' || inputs.force_codegen == true)
+      working-directory: ${{ env.PATH_TO_CLIENT }}
+      run: npm run generate-client
+
+    - name: Stop Project
+      if: always() && (steps.codegen-cache.outputs.cache-hit != 'true' || inputs.force_codegen == true)
+      shell: bash
+      run: |
+        if [ -n "$DOTNET_PID" ] && ps -p $DOTNET_PID > /dev/null 2>&1; then
+          kill $DOTNET_PID 2>/dev/null || true
+          sleep 2
+        fi
+
+    - name: Check for Startup Errors
+      if: steps.codegen-cache.outputs.cache-hit != 'true' || inputs.force_codegen == true
+      shell: pwsh
+      run: '.github/scripts/Check-StartupErrors.ps1 -LogPath "${{ env.PATH_TO_TESTSITE }}/umbraco/Logs"'
 
     - name: Build Client
-      working-directory: ${{ env.PATH_TO_EXTENSION }}
-      run: |
-        cd Client
-        npm run build
+      if: steps.has-client.outputs.present == 'true'
+      working-directory: ${{ env.PATH_TO_CLIENT }}
+      run: npm run build
 
     - name: Build slnx
-      run: dotnet build ${{ github.workspace }}/*.slnx -c Release /maxcpucount:1
+      run: dotnet build ${{ github.workspace }}/*.slnx -c Release
 
-    - name: Verify Code Formatting
-      run: dotnet format ${{ github.workspace }}/*.slnx --verify-no-changes --verbosity diagnostic
+    - name: Pack NuGet Packages
+      run: |
+        mkdir -p artifacts/nuget
+        for proj in ${{ env.PACKABLE_PROJECTS }}; do
+          dotnet pack "$proj" --configuration Release -o artifacts/nuget /p:PackageVersion=${{ needs.setup.outputs.semver }} /p:FileVersion=${{ steps.update-version.outputs.file-version }}
+        done
 
-    - name: Pack NuGet Package
-      working-directory: ${{ env.PATH_TO_EXTENSION }}
-      run: dotnet pack --configuration Release /p:PackageVersion=${{ needs.setup.outputs.semver }} /p:FileVersion=${{ steps.update-version.outputs.file-version }}
-    
+    # Packing regenerates umbraco-marketplace-readme.md from README.md. The Umbraco Marketplace reads that file from
+    # the repository, so a stale committed copy would publish an out-of-date listing.
+    - name: Check the Marketplace readme is up to date
+      run: |
+        if [ -n "$(git status --porcelain -- umbraco-marketplace-readme.md)" ]; then
+          echo "::error::umbraco-marketplace-readme.md is out of date. Run 'dotnet pack' locally and commit the regenerated file."
+          git diff -- umbraco-marketplace-readme.md
+          exit 1
+        fi
+
+    - name: Upload NuGet Packages for Testing
+      uses: actions/upload-artifact@v7
+      with:
+        name: nuget-packages
+        path: |
+          artifacts/nuget/*.nupkg
+          artifacts/nuget/*.snupkg
+        retention-days: 1
+
     - name: Install Package Validation Tool
-      run: dotnet tool install -g dotnet-validate --prerelease
-    
-    - name: Validate NuGet Package
-      run: dotnet validate package local ${{ env.PATH_TO_EXTENSION }}/bin/Release/Umbraco.Community.Cloud.HealthChecks.*.nupkg
+      run: |
+        dotnet tool install -g dotnet-validate --prerelease
+        echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+    - name: Validate NuGet Packages
+      run: |
+        export PATH="$PATH:$HOME/.dotnet/tools"
+        for pkg in artifacts/nuget/Umbraco.Community.Cloud.HealthChecks*.nupkg; do
+          dotnet validate package local "$pkg"
+        done
+
+    - name: Upload Logs on Failure
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: sqlite-logs
+        path: |
+          app.log
+          app-errors.log
+          ${{ env.PATH_TO_TESTSITE }}/umbraco/Logs/
+        retention-days: 3
+
+  # The build job runs the unit tests on Linux; this runs them on Windows too, so both the GetDiskFreeSpaceEx
+  # and the statvfs disk readers (and the Windows and Linux path logic) are exercised on a real OS.
+  test-windows:
+    name: Unit Tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v5
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Run Unit Tests
+      run: dotnet test tests/Umbraco.Community.Cloud.HealthChecks.Tests/Umbraco.Community.Cloud.HealthChecks.Tests.csproj --configuration Release --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
+
+  test-packages:
+    name: Test Packed NuGet Packages Standalone
+    runs-on: ubuntu-latest
+    if: ${{ github.actor != 'nektos/act' }}
+    needs: [setup, build]
+    timeout-minutes: 10
+    steps:
+    - uses: actions/checkout@v5
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Cache NuGet
+      uses: actions/cache@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-cache-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.csproj*') }}
+        restore-keys: |
+          nuget-cache-${{ runner.os }}-${{ github.ref_name }}-
+          nuget-cache-${{ runner.os }}-nuget-
+
+    - name: Download NuGet Packages
+      uses: actions/download-artifact@v8
+      with:
+        name: nuget-packages
+        path: ./nuget-packages
+
+    - name: Flatten NuGet Packages
+      shell: bash
+      run: |
+        # The artifact preserves the src/**/artifacts/nuget path, but NuGet's folder-based package
+        # source expects packages flat (or in id/version subfolders) - nested under arbitrary paths,
+        # it tries to parse an intermediate folder name as a version and silently gives up before
+        # reaching the real .nupkg.
+        mkdir -p ./nuget-packages-flat
+        find ./nuget-packages -name "*.nupkg" -o -name "*.snupkg" | xargs -I{} cp {} ./nuget-packages-flat/
+
+    - name: Configure NuGet with Package Source Mapping
+      working-directory: ${{ env.PATH_TO_TESTSITE }}
+      shell: bash
+      run: |
+        cat > nuget.config <<EOF
+        <?xml version="1.0" encoding="utf-8"?>
+        <configuration>
+          <packageSources>
+            <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+            <add key="LocalPackages" value="${{ github.workspace }}/nuget-packages-flat" />
+          </packageSources>
+          <packageSourceMapping>
+            <packageSource key="LocalPackages">
+              <package pattern="Umbraco.Community.Cloud.HealthChecks*" />
+            </packageSource>
+            <packageSource key="nuget.org">
+              <package pattern="*" />
+            </packageSource>
+          </packageSourceMapping>
+        </configuration>
+        EOF
+
+    # NuGet checks the global packages folder before any package source, and the cache above is restored per
+    # branch. A repeated version (for example a re-run, or a prerelease version that has not advanced) would
+    # otherwise restore an older cached copy and test that instead of the artifact built in this run.
+    - name: Clear cached copies of the packages under test
+      shell: bash
+      run: |
+        for pkg in nuget-packages-flat/*.nupkg; do
+          nuspec=$(unzip -p "$pkg" '*.nuspec')
+          id=$(echo "$nuspec" | sed -n 's:.*<id>\(.*\)</id>.*:\1:p' | head -1 | tr '[:upper:]' '[:lower:]')
+          version=$(echo "$nuspec" | sed -n 's:.*<version>\(.*\)</version>.*:\1:p' | head -1 | tr '[:upper:]' '[:lower:]')
+          echo "Clearing cached $id $version"
+          rm -rf "$HOME/.nuget/packages/$id/$version"
+        done
+
+    - name: Replace ProjectReference with PackageReference
+      working-directory: ${{ env.PATH_TO_TESTSITE }}
+      shell: bash
+      run: |
+        set -e
+        dotnet remove reference ../Umbraco.Community.Cloud.HealthChecks/Umbraco.Community.Cloud.HealthChecks.csproj
+        dotnet add package Umbraco.Community.Cloud.HealthChecks --version ${{ needs.setup.outputs.semver }}
+
+    - name: Restore and Build with NuGet Packages
+      working-directory: ${{ env.PATH_TO_TESTSITE }}
+      run: dotnet build -c Release
+
+    - name: Start Application
+      working-directory: ${{ env.PATH_TO_TESTSITE }}
+      shell: bash
+      run: |
+        nohup dotnet run --no-build -c Release > ../../app.log 2> ../../app-errors.log &
+        echo "DOTNET_PID=$!" >> $GITHUB_ENV
+        sleep 5
+
+        for i in {1..30}; do
+          if curl -k -s --max-time 5 https://localhost:44302/umbraco/management/api/v1/server/status | grep -q '"serverStatus":"Run"'; then
+            exit 0
+          fi
+          sleep 2
+        done
+        exit 1
+
+    - name: Check for Startup Errors
+      shell: pwsh
+      run: '.github/scripts/Check-StartupErrors.ps1 -LogPath "${{ env.PATH_TO_TESTSITE }}/umbraco/Logs"'
+
+    - name: Upload Logs on Failure
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: package-test-logs
+        path: |
+          app.log
+          app-errors.log
+          ${{ env.PATH_TO_TESTSITE }}/umbraco/Logs/
+        retention-days: 3
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    if: ${{ github.actor != 'nektos/act' }}
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      # SARIF upload to GitHub code scanning is free on public repos only (private repos need
+      # GitHub Advanced Security), so private packages just get the findings in this job's log.
+      - name: Upload Trivy results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true # the scan itself still ran above
+        with:
+          sarif_file: 'trivy-results.sarif'

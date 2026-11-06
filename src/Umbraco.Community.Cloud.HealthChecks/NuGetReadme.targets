@@ -1,0 +1,88 @@
+<Project>
+  <!--
+    nuget.org only renders Markdown - raw HTML in a readme (<img>, <details>/<summary>) is shown as literal
+    text. The repo README.md keeps HTML so it looks right on GitHub (sized images, collapsible sections); this
+    target packs a converted copy instead, so nothing needs to be maintained twice or run as a CI step.
+
+    Converts: <img ... src="U" ... alt="A" ...> (any attribute order) -> ![A](U)
+              <details><summary>T</summary> ... </details>           -> **T** ... (always expanded)
+    Relative links ([text](CONTRIBUTING.md)) become absolute GitHub links, since they only resolve on GitHub.
+    Warns if other raw HTML block tags are left in, since nuget.org would show those as text too.
+
+    Two copies are produced from the one README.md:
+
+    - the readme packed into the NuGet package (and so shown on nuget.org) has its badge lines removed
+      ([![alt](badge)](link) ...): nuget.org already shows the version and downloads, and the repo's build status
+      means nothing to someone reading the package page;
+    - umbraco-marketplace-readme.md, written next to umbraco-marketplace.json in the repo root, keeps the badges.
+      The Umbraco Marketplace shows that file in place of the packed readme when it finds it. It is only rewritten
+      when its content changes, and has to be committed: the Marketplace reads it from the repository.
+
+    Usage: set <NuGetReadmeSource> (default: ../../README.md) and import this file; PackageReadmeFile must be README.md.
+    Set <MarketplaceReadmeOutput> to change where the Marketplace copy is written, or <DisableMarketplaceReadme>
+    to true to skip it.
+  -->
+  <UsingTask TaskName="ConvertReadmeForNuGet" TaskFactory="RoslynCodeTaskFactory"
+             AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <InputFile ParameterType="System.String" Required="true" />
+      <OutputFile ParameterType="System.String" Required="true" />
+      <StripBadges ParameterType="System.Boolean" Required="false" />
+      <RepositoryBlobUrl ParameterType="System.String" Required="false" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var text = File.ReadAllText(InputFile);
+
+        // Lookaheads capture alt and src regardless of attribute order.
+        text = Regex.Replace(text, "<img\\b(?=[^>]*\\balt=\"([^\"]*)\")(?=[^>]*\\bsrc=\"([^\"]*)\")[^>]*>", "![$1]($2)");
+        text = Regex.Replace(text, "<img\\b(?=[^>]*\\bsrc=\"([^\"]*)\")[^>]*>", "![]($1)");
+
+        text = Regex.Replace(text, "<summary>\\s*(.*?)\\s*</summary>", "**$1**", RegexOptions.Singleline);
+        text = Regex.Replace(text, "</?details>[ \\t]*\\r?\\n?", "");
+
+        if (StripBadges)
+        {
+            // A line made only of badge links: [![alt](image)](link), optionally several separated by spaces.
+            text = Regex.Replace(text, @"^(?:[ \t]*\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\))+[ \t]*\r?\n(?:[ \t]*\r?\n)?", "", RegexOptions.Multiline);
+        }
+
+        if (!string.IsNullOrEmpty(RepositoryBlobUrl))
+        {
+            // Relative links ([Contributing](CONTRIBUTING.md)) work on GitHub but not on nuget.org or the Marketplace.
+            var blob = RepositoryBlobUrl.TrimEnd('/') + "/";
+            text = Regex.Replace(text, @"(?<=\]\()(?!(?:[a-zA-Z][a-zA-Z0-9+.-]*:|#|/))(?:\./)?([^)\s]+)(?=\))", m => blob + m.Groups[1].Value);
+        }
+
+        foreach (Match m in Regex.Matches(text, "<(p|div|center|table|picture|br)\\b[^>]*>", RegexOptions.IgnoreCase))
+        {
+            Log.LogWarning("README contains raw HTML that nuget.org will not render: " + m.Value);
+        }
+
+        // Resolve first: a bare file name has no directory part for GetDirectoryName to return.
+        var outputPath = Path.GetFullPath(OutputFile);
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+        if (!File.Exists(outputPath) || File.ReadAllText(outputPath) != text)
+        {
+            File.WriteAllText(outputPath, text);
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="PrepareNuGetReadme" BeforeTargets="_GetPackageFiles;GenerateNuspec" Condition="'$(IsPackable)' != 'false'">
+    <PropertyGroup>
+      <NuGetReadmeSource Condition="'$(NuGetReadmeSource)' == ''">$(MSBuildProjectDirectory)/../../README.md</NuGetReadmeSource>
+      <RepositoryBlobUrl Condition="'$(RepositoryBlobUrl)' == '' And '$(PackageProjectUrl)' != ''">$(PackageProjectUrl.TrimEnd('/'))/blob/HEAD</RepositoryBlobUrl>
+      <NuGetReadmeOutput>$(MSBuildProjectDirectory)/$(IntermediateOutputPath)nuget-readme/README.md</NuGetReadmeOutput>
+      <MarketplaceReadmeOutput Condition="'$(MarketplaceReadmeOutput)' == '' And '$(DisableMarketplaceReadme)' != 'true'">$(MSBuildProjectDirectory)/../../umbraco-marketplace-readme.md</MarketplaceReadmeOutput>
+    </PropertyGroup>
+    <ConvertReadmeForNuGet InputFile="$(NuGetReadmeSource)" OutputFile="$(NuGetReadmeOutput)" StripBadges="true" RepositoryBlobUrl="$(RepositoryBlobUrl)" />
+    <ConvertReadmeForNuGet Condition="'$(MarketplaceReadmeOutput)' != '' And '$(DisableMarketplaceReadme)' != 'true'" InputFile="$(NuGetReadmeSource)" OutputFile="$(MarketplaceReadmeOutput)" StripBadges="false" RepositoryBlobUrl="$(RepositoryBlobUrl)" />
+    <ItemGroup>
+      <None Include="$(NuGetReadmeOutput)" Pack="true" PackagePath="" Visible="false" />
+    </ItemGroup>
+  </Target>
+</Project>

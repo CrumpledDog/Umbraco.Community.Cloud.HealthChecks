@@ -51,6 +51,20 @@ You can run these scripts in the Kudu console (Advanced Tools > Debug Console > 
 2. Run the one-liner command shown above (works from any directory)
 3. The script will automatically detect the Azure environment and clean up the files, showing you how much space was freed
 
+## Running on Linux (Azure Web Apps, containers, VMs)
+
+The PowerShell scripts are written for Windows paths and the Kudu PowerShell console. On Linux use the equivalent shell commands (SSH or the Kudu Bash console), after checking the sizes:
+
+```bash
+# NuGet cache (honours NUGET_PACKAGES, otherwise $HOME/.nuget)
+du -sh "${NUGET_PACKAGES:-$HOME/.nuget}"
+dotnet nuget locals all --clear
+
+# Umbraco logs (path is case-sensitive on Linux)
+du -sh /home/site/wwwroot/umbraco/Logs
+find /home/site/wwwroot/umbraco/Logs -type f -mtime +7 -delete   # older than 7 days
+```
+
 ## Security Note
 
 These scripts use `Invoke-RestMethod` (irm) to download and `Invoke-Expression` (iex) to execute. Always review scripts before running them, especially with `iex`. These scripts are hosted in this repository and you can review them before use.

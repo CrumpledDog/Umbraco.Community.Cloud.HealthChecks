@@ -15,8 +15,10 @@ if [ -z "$SEMVER" ]; then
   exit 1
 fi
 
-# Extract version from release branch (e.g., release/v1 -> v1)
-VERSION_SUFFIX=$(echo "${GITHUB_REF#refs/heads/release/}")
+# Extract version from release branch (e.g., release/v2 or beta/v2 -> v2)
+BRANCH_REF="${GITHUB_REF#refs/heads/}"
+VERSION_SUFFIX="${BRANCH_REF#release/}"
+VERSION_SUFFIX="${VERSION_SUFFIX#beta/}"
 DEVELOP_BRANCH="develop/$VERSION_SUFFIX"
 
 echo "Merging ${GITHUB_REF#refs/heads/} into $DEVELOP_BRANCH after release $SEMVER"
@@ -24,6 +26,11 @@ echo "Merging ${GITHUB_REF#refs/heads/} into $DEVELOP_BRANCH after release $SEMV
 # Configure git
 git config user.name "github-actions[bot]"
 git config user.email "github-actions[bot]@users.noreply.github.com"
+
+# Directory.Packages.props/Directory.Build.props/.releaserc/Client/package.json are marked
+# merge=ours in .gitattributes (deliberately different between the v1/v2 branch pairs) - this
+# driver isn't enabled by default, so wire it up before merging.
+git config merge.ours.driver true
 
 # Fetch the develop branch
 git fetch origin "$DEVELOP_BRANCH"

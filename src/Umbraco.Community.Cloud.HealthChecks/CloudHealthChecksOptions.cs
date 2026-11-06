@@ -60,6 +60,12 @@ namespace Umbraco.Community.Cloud.HealthChecks
             public double CacheExpirationHours { get; set; } = 720.0;
 
             /// <summary>
+            /// Time limit in minutes for scanning one folder (default: 15). On overrun the scan is abandoned and an
+            /// error result ("took longer than the limit, will retry") is stored instead of a partial number.
+            /// </summary>
+            public double ScanTimeLimitMinutes { get; set; } = 15.0;
+
+            /// <summary>
             /// Storage mode for health check results (default: KeyValue)
             /// Use DistributedCache for deployments with a distributed cache provider.
             /// </summary>
