@@ -9,7 +9,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
     [HealthCheck(
         "8F4C5B3A-9D2E-4A1C-B8F7-3E5D9A1B4C2F",
         "NuGet Cache Size",
-        Description = "Reports the size of the NuGet cache folder in Azure Web Apps (C:\\home\\.nuget)",
+        Description = "Reports the size of the NuGet cache folder in Azure Web Apps (C:\\home\\.nuget on Windows, /home/.nuget on Linux)",
         Group = "Umbraco Cloud")]
     public class NuGetCacheSizeHealthCheck : FolderSizeHealthCheckBase
     {

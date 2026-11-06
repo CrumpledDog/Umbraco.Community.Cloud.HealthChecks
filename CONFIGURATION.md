@@ -39,8 +39,8 @@ You can configure the thresholds for each health check in your `appsettings.json
 - **LocalTestMode** (default: `false`)  
   Enable local test mode for testing health checks outside of Azure environment.  
   When enabled:
-  - **Azure Storage Check** uses application root and wwwroot folders instead of `C:\home` and `C:\local`
-  - **NuGet Cache Check** uses `%USERPROFILE%\.nuget\packages` instead of `C:\home\.nuget`
+  - **Azure Storage Check** uses application root and wwwroot folders instead of `C:\home` and `C:\local` (`/home` on Linux)
+  - **NuGet Cache Check** uses `%USERPROFILE%\.nuget\packages` (`~/.nuget/packages` on Linux) instead of `C:\home\.nuget` (`/home/.nuget` on Linux)
   - Both checks will run even when not in Azure environment
   
   **Usage:** Set to `true` in your local development appsettings.Development.json to test the health checks.
@@ -154,7 +154,7 @@ Cached folder size for {HealthCheck}: {Size} bytes, {Files} files
 
 ### Overriding NuGet Cache Intelligent Defaults
 
-By default, NuGet cache thresholds are automatically calculated based on your `C:\home` directory size. To override with explicit values:
+By default, NuGet cache thresholds are automatically calculated based on your `C:\home` (Linux: `/home`) directory size. To override with explicit values:
 
 ```json
 {

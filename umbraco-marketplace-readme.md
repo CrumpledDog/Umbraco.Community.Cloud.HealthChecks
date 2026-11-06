@@ -31,11 +31,11 @@ This approach is especially valuable for large folders (NuGet cache, logs) where
 
 ### Included Health Checks
 
-- **Azure Storage Usage** - Monitors storage usage for `C:\home` and `C:\local` directories in Umbraco Cloud
+- **Azure Storage Usage** - Monitors storage usage for the home and local disks: `C:\home` and `C:\local` on Windows (Umbraco Cloud, Azure Web Apps), `/home` and the temp folder on Linux Azure Web Apps
   - Warning threshold at 75% usage
   - Error threshold at 90% usage
-  - Windows-only support
-  - Uses Windows API for instant results (no scanning required)
+  - Windows and Linux support
+  - Asks the OS for quota-aware figures (`GetDiskFreeSpaceEx` on Windows, `statvfs` on Linux) for instant results (no scanning required)
 
 - **NuGet Cache Size** - Monitors the size of the NuGet cache directory (Umbraco Cloud and Azure Web Apps only)
   - **Intelligent defaults**: Automatically calculates thresholds based on total home directory size (50% for error, 75% of error for warning)
@@ -53,7 +53,7 @@ This approach is especially valuable for large folders (NuGet cache, logs) where
 The package detects where it is running, so the same package works on any infrastructure:
 
 - **Umbraco Cloud** (`Umbraco:Cloud:IsRunningOnCloud`, or an App Service with `Umbraco:Cloud:Identity:EnvironmentId` / `umbraco-cloud.json`) and **Azure Web Apps** (both `WEBSITE_SITE_NAME` and `WEBSITE_INSTANCE_ID` set): all checks apply. The health check group is named **Umbraco Cloud** or **Azure Web App** accordingly.
-- **VMs, containers and anywhere else**: only the Umbraco Logs check applies (group **Hosting**). The Azure-specific checks (storage quotas, NuGet cache under `C:home`) would only report that they do not apply, so they are left out.
+- **VMs, containers and anywhere else**: only the Umbraco Logs check applies (group **Hosting**). The Azure-specific checks (storage quotas, NuGet cache under `C:\home` or `/home/.nuget`) would only report that they do not apply, so they are left out.
 
 `CloudHealthChecks:LocalTestMode` still makes every check run locally. The detected platform is available as `IStatsTargetCatalog.Platform`.
 
@@ -63,7 +63,7 @@ When more than one server is known, each check reports every server, named, inst
 
 - Servers are listed from Umbraco's own server registration table (`umbracoLastSynced`, the same source the Crumpled Hosting Kit uses). Each server's refresh job also publishes its site key and name, so servers that have never reported (or were decommissioned) are left out.
 - Names follow the hosting kit: the machine name plus `/{SiteName}` when `Umbraco:CMS:Hosting:SiteName` is set. When it is not set on Azure App Service the App Service site name (and slot) is used instead, so servers on one plan stay distinguishable.
-- Shared disks (logs, NuGet cache, `C:\home`) are reported once per site, naming the site and its servers; per-instance folders and disks (local temp, `C:\local`, the temp drive) once per server. The current server is listed first.
+- Shared disks (logs, NuGet cache, `C:\home` or `/home`) are reported once per site, naming the site and its servers; per-instance folders and disks (local temp, `C:\local` on Windows, the temp drive) once per server. The current server is listed first.
 - With a single server the output is unchanged.
 
 ## Installation
@@ -163,7 +163,7 @@ public interface IStatsServers
 
 public interface IDiskUsageReader
 {
-    DiskUsage? Read(string path);                 // GetDiskFreeSpaceEx on the path (quota-aware); null off Windows
+    DiskUsage? Read(string path);                 // GetDiskFreeSpaceEx (Windows) or statvfs (Linux) on the path (quota-aware)
 }
 ```
 
@@ -179,7 +179,7 @@ Notes:
 ## Requirements
 
 - Umbraco CMS v17+
-- Umbraco Cloud, Azure Web Apps (Windows), or any other host (VM, container) for the Umbraco Logs check
+- Umbraco Cloud, Azure Web Apps (Windows or Linux), or any other host (VM, container) for the Umbraco Logs check
 
 ## Proactive Monitoring
 
