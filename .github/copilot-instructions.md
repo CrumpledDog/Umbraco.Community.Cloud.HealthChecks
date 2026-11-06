@@ -34,8 +34,8 @@ Single packable project; the DemoSite and tests reference it directly.
 
 ## Two Umbraco majors, one repo
 
-`develop/v1`/`release/v1` (Umbraco 17) is where all development happens. `develop/v2`/`release/v2`
-(Umbraco 18, once created) only ever receives merges *from* v1 — never branch features directly against v2,
+`develop/v1`/`release/v1` (Umbraco 17 and 18) is where all development happens. `develop/v2`/`release/v2`
+(Umbraco 19) only ever receives merges *from* v1 — never branch features directly against v2,
 never cherry-pick. Work on v2 in its own git worktree, not by switching branches in the v1 clone, so
 `node_modules`, `bin`/`obj` and the local SQLite database never mix between majors. Run
 `git config merge.ours.driver true` once per clone/worktree. See CONTRIBUTING.md's "Umbraco 17/18 branch lines"
