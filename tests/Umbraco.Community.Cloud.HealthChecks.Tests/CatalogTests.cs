@@ -91,7 +91,7 @@ public class CatalogTests
     {
         using var root = new TempFolder();
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { @"C:\home", @"C:\local", @"D:\local" };
-        var env = new HostingEnvironmentInfo(n => n == "TEMP" ? @"D:\local\Temp" : null, "m");
+        var env = new HostingEnvironmentInfo(n => n == "TEMP" ? @"D:\local\Temp" : null, "m", isWindows: true);
         var catalog = new StatsTargetCatalog(root.Path, new CloudHealthChecksOptions(), "m", env, HostingPlatform.AzureWebApp, existing.Contains);
 
         Assert.True(catalog.Find(StatsTargetKeys.HomeDisk)!.AppliesToThisHost);
@@ -101,9 +101,186 @@ public class CatalogTests
 
         // Same drive as C:\local: not reported twice
         var same = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { @"C:\home", @"C:\local", @"C:\local\x" };
-        var env2 = new HostingEnvironmentInfo(n => n == "TEMP" ? @"C:\local\x" : null, "m");
+        var env2 = new HostingEnvironmentInfo(n => n == "TEMP" ? @"C:\local\x" : null, "m", isWindows: true);
         var catalog2 = new StatsTargetCatalog(root.Path, new CloudHealthChecksOptions(), "m", env2, HostingPlatform.AzureWebApp, same.Contains);
         Assert.False(catalog2.Find(StatsTargetKeys.TempDisk)!.AppliesToThisHost);
+    }
+}
+
+public class LinuxCatalogTests
+{
+    private static StatsTargetCatalog Catalog(
+        HostingEnvironmentInfo env,
+        Func<string, bool>? exists = null,
+        Func<string, string?>? mountOf = null,
+        string contentRoot = "/home/site/wwwroot") =>
+        new(contentRoot, new CloudHealthChecksOptions(), "m", env, HostingPlatform.AzureWebApp, exists ?? (_ => true), mountOf ?? (p => p.StartsWith("/home") ? "/home" : "/"));
+
+    [Fact]
+    public void Home_disk_is_slash_home_and_nuget_cache_sits_under_home()
+    {
+        var catalog = Catalog(Build.LinuxAzure(("HOME", "/home")));
+
+        var home = catalog.Find(StatsTargetKeys.HomeDisk)!;
+        Assert.Equal("/home", home.Path);
+        Assert.Equal("/home", home.DisplayName);
+        Assert.True(home.AppliesToThisHost);
+        Assert.Equal(Path.Combine("/home", ".nuget"), catalog.Find(StatsTargetKeys.NuGetCache)!.Path);
+    }
+
+    [Fact]
+    public void Temp_comes_from_tmpdir_without_a_trailing_separator()
+    {
+        var catalog = Catalog(Build.LinuxAzure(("TMPDIR", "/var/tmp/")));
+
+        Assert.Equal("/var/tmp/", catalog.Find(StatsTargetKeys.LocalTemp)!.Path);
+        Assert.Equal("/var/tmp", catalog.Find(StatsTargetKeys.TempDisk)!.Path);
+    }
+
+    [Fact]
+    public void There_is_no_local_disk_on_linux_and_the_temp_disk_is_reported_when_it_is_a_different_mount()
+    {
+        var catalog = Catalog(Build.LinuxAzure(("TMPDIR", "/tmp")));
+
+        Assert.False(catalog.Find(StatsTargetKeys.LocalDisk)!.AppliesToThisHost);
+        Assert.True(catalog.Find(StatsTargetKeys.TempDisk)!.AppliesToThisHost); // /tmp is on "/", /home on its own mount
+    }
+
+    [Fact]
+    public void Temp_disk_on_the_same_mount_as_home_is_not_reported_twice()
+    {
+        var catalog = Catalog(Build.LinuxAzure(("TMPDIR", "/home/tmp")));
+
+        Assert.False(catalog.Find(StatsTargetKeys.TempDisk)!.AppliesToThisHost);
+    }
+
+    [Fact]
+    public void Unknown_mounts_are_treated_as_different_so_the_disk_is_still_reported()
+    {
+        var catalog = Catalog(Build.LinuxAzure(("TMPDIR", "/tmp")), mountOf: _ => null);
+
+        Assert.True(catalog.Find(StatsTargetKeys.TempDisk)!.AppliesToThisHost);
+    }
+
+    [Fact]
+    public void Missing_temp_folder_means_the_temp_disk_does_not_apply()
+    {
+        var catalog = Catalog(Build.LinuxAzure(("TMPDIR", "/tmp")), exists: p => p != "/tmp");
+
+        Assert.False(catalog.Find(StatsTargetKeys.TempDisk)!.AppliesToThisHost);
+    }
+
+    [Fact]
+    public void Linux_hosts_that_are_not_app_service_only_monitor_the_logs()
+    {
+        var catalog = new StatsTargetCatalog("/app", new CloudHealthChecksOptions(), "m", Build.OffAzure(isWindows: false), null, _ => true, _ => "/");
+
+        Assert.Equal(new[] { StatsTargetKeys.UmbracoLogs }, catalog.Targets.Where(t => t.AppliesToThisHost).Select(t => t.Key));
+    }
+
+    [Fact]
+    public void Temp_comes_from_the_os_specific_variable_not_the_other_ones()
+    {
+        var linux = new HostingEnvironmentInfo(n => n switch { "TEMP" => "/wrong", "TMPDIR" => "/right", _ => null }, "m", isWindows: false);
+        var windows = new HostingEnvironmentInfo(n => n switch { "TEMP" => @"C:\right", "TMPDIR" => @"C:\wrong", _ => null }, "m", isWindows: true);
+
+        Assert.Equal("/right", linux.Temp);
+        Assert.Equal(@"C:\right", windows.Temp);
+        Assert.Null(new HostingEnvironmentInfo(n => n == "TEMP" ? "/wrong" : null, "m", isWindows: false).Temp);
+    }
+
+    [Fact]
+    public void Nuget_cache_stays_on_the_shared_home_mount_even_when_home_points_elsewhere()
+    {
+        var catalog = Catalog(Build.LinuxAzure(("HOME", "/root")));
+
+        var nuget = catalog.Find(StatsTargetKeys.NuGetCache)!;
+        Assert.Equal(Path.Combine("/home", ".nuget"), nuget.Path);
+        Assert.Equal(StatsScope.Shared, nuget.Scope);
+    }
+
+    [Fact]
+    public void Test_mode_on_linux_compares_mounts_too()
+    {
+        var env = new HostingEnvironmentInfo(n => n == "TMPDIR" ? "/tmp" : null, "m", isWindows: false);
+        var catalog = new StatsTargetCatalog(
+            "/app", new CloudHealthChecksOptions { LocalTestMode = true }, "m", env, null, _ => true, p => p.StartsWith("/app") ? "/app" : "/");
+
+        Assert.True(catalog.Find(StatsTargetKeys.TempDisk)!.AppliesToThisHost); // /tmp is on a different mount from the app
+
+        var sameMount = new StatsTargetCatalog(
+            "/app", new CloudHealthChecksOptions { LocalTestMode = true }, "m", env, null, _ => true, _ => "/");
+        Assert.False(sameMount.Find(StatsTargetKeys.TempDisk)!.AppliesToThisHost);
+    }
+
+    [Fact]
+    public void Symlinked_path_components_are_resolved_before_matching_mounts()
+    {
+        using var root = new TempFolder();
+        var target = Directory.CreateDirectory(Path.Combine(root.Path, "target", "inner")).FullName;
+        var link = Path.Combine(root.Path, "link");
+        try
+        {
+            Directory.CreateSymbolicLink(link, Path.Combine(root.Path, "target"));
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            return; // creating symlinks needs a privilege on Windows
+        }
+
+        // Both end up at the same real folder (the temp folder itself may sit behind a symlink on some systems)
+        var resolved = StatsTargetCatalog.ResolveSymlinks(Path.Combine(link, "inner"));
+        Assert.Equal(StatsTargetCatalog.ResolveSymlinks(target), resolved);
+        Assert.DoesNotContain("link", resolved.Substring(StatsTargetCatalog.ResolveSymlinks(root.Path).Length));
+    }
+
+    [Fact]
+    public void A_mount_matches_whole_directory_names_only()
+    {
+        var root = Path.GetFullPath("/");
+        var home = Path.GetFullPath("/home");
+        var mounts = new[] { root, home };
+
+        Assert.Equal(home, StatsTargetCatalog.FindMountPoint("/home/tmp", mounts));
+        Assert.Equal(home, StatsTargetCatalog.FindMountPoint("/home", mounts));
+        Assert.Equal(root, StatsTargetCatalog.FindMountPoint("/home2/tmp", mounts)); // sibling prefix: not under /home
+        Assert.Equal(root, StatsTargetCatalog.FindMountPoint("/tmp", mounts));
+    }
+
+    [Fact]
+    public void Mount_point_is_found_for_a_real_folder()
+    {
+        using var root = new TempFolder();
+
+        var mount = StatsTargetCatalog.FindMountPoint(root.Path);
+
+        Assert.NotNull(mount);
+        Assert.StartsWith(mount!, Path.GetFullPath(root.Path));
+    }
+}
+
+public class DiskUsageReaderTests
+{
+    [Fact]
+    public void Reads_total_and_free_space_for_an_existing_folder_on_this_os()
+    {
+        using var root = new TempFolder();
+
+        var usage = new DiskUsageReader().Read(root.Path);
+
+        Assert.NotNull(usage);
+        var value = usage!.Value;
+        Assert.True(value.TotalBytes > 0);
+        Assert.InRange(value.FreeBytes, 0, value.TotalBytes);
+    }
+
+    [Fact]
+    public void Missing_folder_or_blank_path_gives_null()
+    {
+        var reader = new DiskUsageReader();
+
+        Assert.Null(reader.Read(Path.Combine(Path.GetTempPath(), "chc-missing-" + Guid.NewGuid().ToString("N"))));
+        Assert.Null(reader.Read(" "));
     }
 }
 

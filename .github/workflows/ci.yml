@@ -307,6 +307,24 @@ jobs:
           ${{ env.PATH_TO_TESTSITE }}/umbraco/Logs/
         retention-days: 3
 
+  # The build job runs the unit tests on Linux; this runs them on Windows too, so both the GetDiskFreeSpaceEx
+  # and the statvfs disk readers (and the Windows and Linux path logic) are exercised on a real OS.
+  test-windows:
+    name: Unit Tests (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v5
+
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Run Unit Tests
+      run: dotnet test tests/Umbraco.Community.Cloud.HealthChecks.Tests/Umbraco.Community.Cloud.HealthChecks.Tests.csproj --configuration Release --logger "GitHubActions;summary.includePassedTests=true;summary.includeSkippedTests=true"
+
   test-packages:
     name: Test Packed NuGet Packages Standalone
     runs-on: ubuntu-latest

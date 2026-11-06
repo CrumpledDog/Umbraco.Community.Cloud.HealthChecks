@@ -108,7 +108,8 @@ namespace Umbraco.Community.Cloud.HealthChecks
             {
                 RecurseSubdirectories = true,
                 IgnoreInaccessible = true,
-                ReturnSpecialDirectories = false
+                ReturnSpecialDirectories = false,
+                AttributesToSkip = FileAttributes.None // the default skips Hidden, which on Linux means every dot-file and dot-folder
             };
 
             foreach (var file in new DirectoryInfo(path).EnumerateFiles("*", enumerationOptions))

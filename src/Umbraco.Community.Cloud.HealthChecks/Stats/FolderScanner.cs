@@ -16,7 +16,8 @@ internal static class FolderScanner
         {
             RecurseSubdirectories = true,
             IgnoreInaccessible = true,
-            ReturnSpecialDirectories = false
+            ReturnSpecialDirectories = false,
+            AttributesToSkip = FileAttributes.None // the default skips Hidden, which on Linux means every dot-file and dot-folder
         };
 
         // Every entry, directories included, passes the predicate, so cancellation is observed even in a large tree of empty folders

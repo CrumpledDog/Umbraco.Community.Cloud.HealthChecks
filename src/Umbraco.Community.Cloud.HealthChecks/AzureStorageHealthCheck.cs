@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -10,15 +9,11 @@ namespace Umbraco.Community.Cloud.HealthChecks
     [HealthCheck(
         "2E8F9A3B-5D4C-4F1E-9B7A-6C8D2E4F5A9B",
         "Azure Storage Usage",
-        Description = "Reports storage usage for C:\\home and C:\\local in Azure Web Apps",
+        Description = "Reports storage usage for the home and local disks in Azure Web Apps (C:\\home and C:\\local on Windows, /home and the temp folder on Linux)",
         Group = "Umbraco Cloud")]
     public class AzureStorageHealthCheck : HealthCheck
     {
-        private const string HomeDirectory = @"C:\home";
-        private const string LocalDirectory = @"C:\local";
-        private const string LocalTempDirectory = @"D:\local";
         private readonly CloudHealthChecksOptions _options;
-        private readonly IHostEnvironment _hostEnvironment;
         private readonly IDiskUsageReader _diskUsageReader;
         private readonly IStatsTargetCatalog _catalog;
         private IStatsServers? _servers;
@@ -47,7 +42,6 @@ namespace Umbraco.Community.Cloud.HealthChecks
             _catalog = catalog;
             HostingPlatformDetector.ApplyGroup(this, catalog.Platform);
             _options = options.Value;
-            _hostEnvironment = hostEnvironment;
         }
 
         /// <summary>Also reports the disks of the other servers (by name) when more than one server is known.</summary>
@@ -196,76 +190,33 @@ namespace Umbraco.Community.Cloud.HealthChecks
         {
             var results = new List<HealthCheckStatus>();
 
-            // Only supported on Windows
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            // The catalog resolves the platform specific paths (C:\home, C:\local, D:\local on Windows; /home and the temp folder on Linux)
+            // and says which of them apply to this host
+            var home = _catalog.Find(StatsTargetKeys.HomeDisk)!;
+            if (!home.AppliesToThisHost || !Directory.Exists(home.Path))
             {
                 results.Add(new HealthCheckStatus(
-                    "Azure Storage health check is only supported on Windows.")
+                    "This check is only applicable on Umbraco Cloud or Azure Web Apps.")
                 {
-                    ResultType = StatusResultType.Success
+                    ResultType = StatusResultType.Info
                 });
                 return results;
             }
 
-            // Determine paths based on mode
-            string homeDir, localDir, localTempDir;
-            string homeDisplayName, localDisplayName, localTempDisplayName;
+            CheckDirectoryUsage(home.Path, home.DisplayName, results, _options.AzureStorage.WarningThresholdPercentage, _options.AzureStorage.ErrorThresholdPercentage);
 
-            if (_options.LocalTestMode)
+            // The local disk (C:\local) exists on Windows App Service only
+            var local = _catalog.Find(StatsTargetKeys.LocalDisk)!;
+            if (local.AppliesToThisHost)
             {
-                // In test mode, use the application's content root
-                homeDir = _hostEnvironment.ContentRootPath;
-                localDir = Path.Combine(_hostEnvironment.ContentRootPath, "wwwroot");
-                localTempDir = Environment.GetEnvironmentVariable("TEMP") ?? Path.GetTempPath();
-                homeDisplayName = "Application root (test mode)";
-                localDisplayName = "wwwroot folder (test mode)";
-                localTempDisplayName = "System temp folder (test mode)";
-            }
-            else
-            {
-                // Production mode - only run if we're in Azure (C:\home exists)
-                if (!_catalog.Find(StatsTargetKeys.HomeDisk)!.AppliesToThisHost || !Directory.Exists(HomeDirectory))
-                {
-                    results.Add(new HealthCheckStatus(
-                        "This check is only applicable on Umbraco Cloud or Azure Web Apps.")
-                    {
-                        ResultType = StatusResultType.Info
-                    });
-                    return results;
-                }
-
-                homeDir = HomeDirectory;
-                localDir = LocalDirectory;
-
-                // Get TEMP and strip \Temp suffix if present (e.g., C:\local\Temp -> C:\local)
-                var tempPath = Environment.GetEnvironmentVariable("TEMP") ?? LocalTempDirectory;
-                localTempDir = tempPath.EndsWith(@"\Temp", StringComparison.OrdinalIgnoreCase)
-                    ? Directory.GetParent(tempPath)?.FullName ?? tempPath
-                    : tempPath;
-
-                homeDisplayName = "C:\\home";
-                localDisplayName = "C:\\local";
-                localTempDisplayName = localTempDir;
+                CheckDirectoryUsage(local.Path, local.DisplayName, results, _options.AzureStorage.WarningThresholdPercentage, _options.AzureStorage.ErrorThresholdPercentage);
             }
 
-            // Check home directory
-            CheckDirectoryUsage(homeDir, homeDisplayName, results, _options.AzureStorage.WarningThresholdPercentage, _options.AzureStorage.ErrorThresholdPercentage);
-
-            // Check local directory if it exists
-            if (Directory.Exists(localDir))
+            // The temp disk is only reported when it is not the same disk as one already reported
+            var temp = _catalog.Find(StatsTargetKeys.TempDisk)!;
+            if (temp.AppliesToThisHost)
             {
-                CheckDirectoryUsage(localDir, localDisplayName, results, _options.AzureStorage.WarningThresholdPercentage, _options.AzureStorage.ErrorThresholdPercentage);
-            }
-
-            // Check local temp directory if it exists and has a different root path
-            if (Directory.Exists(localTempDir))
-            {
-                var localRoot = Path.GetPathRoot(Path.GetFullPath(localDir));
-                var tempRoot = Path.GetPathRoot(Path.GetFullPath(localTempDir));
-                if (!string.Equals(localRoot, tempRoot, StringComparison.OrdinalIgnoreCase))
-                {
-                    CheckDirectoryUsage(localTempDir, localTempDisplayName, results, _options.LocalTemp.WarningThresholdPercentage, _options.LocalTemp.ErrorThresholdPercentage);
-                }
+                CheckDirectoryUsage(temp.Path, temp.DisplayName, results, _options.LocalTemp.WarningThresholdPercentage, _options.LocalTemp.ErrorThresholdPercentage);
             }
 
             return results;
@@ -285,7 +236,7 @@ namespace Umbraco.Community.Cloud.HealthChecks
                     return;
                 }
 
-                // Get actual disk space using Windows API (same as Kudu)
+                // Get actual disk space from the OS for the path itself, so App Service quotas are honoured (same as Kudu)
                 var usage = _diskUsageReader.Read(directory)
                     ?? throw new InvalidOperationException("disk usage could not be read");
                 var totalBytes = (ulong)usage.TotalBytes;
