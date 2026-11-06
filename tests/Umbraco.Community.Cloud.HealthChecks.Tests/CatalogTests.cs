@@ -190,6 +190,51 @@ public class LinuxCatalogTests
     }
 
     [Fact]
+    public void Nuget_cache_stays_on_the_shared_home_mount_even_when_home_points_elsewhere()
+    {
+        var catalog = Catalog(Build.LinuxAzure(("HOME", "/root")));
+
+        var nuget = catalog.Find(StatsTargetKeys.NuGetCache)!;
+        Assert.Equal(Path.Combine("/home", ".nuget"), nuget.Path);
+        Assert.Equal(StatsScope.Shared, nuget.Scope);
+    }
+
+    [Fact]
+    public void Test_mode_on_linux_compares_mounts_too()
+    {
+        var env = new HostingEnvironmentInfo(n => n == "TMPDIR" ? "/tmp" : null, "m", isWindows: false);
+        var catalog = new StatsTargetCatalog(
+            "/app", new CloudHealthChecksOptions { LocalTestMode = true }, "m", env, null, _ => true, p => p.StartsWith("/app") ? "/app" : "/");
+
+        Assert.True(catalog.Find(StatsTargetKeys.TempDisk)!.AppliesToThisHost); // /tmp is on a different mount from the app
+
+        var sameMount = new StatsTargetCatalog(
+            "/app", new CloudHealthChecksOptions { LocalTestMode = true }, "m", env, null, _ => true, _ => "/");
+        Assert.False(sameMount.Find(StatsTargetKeys.TempDisk)!.AppliesToThisHost);
+    }
+
+    [Fact]
+    public void Symlinked_path_components_are_resolved_before_matching_mounts()
+    {
+        using var root = new TempFolder();
+        var target = Directory.CreateDirectory(Path.Combine(root.Path, "target", "inner")).FullName;
+        var link = Path.Combine(root.Path, "link");
+        try
+        {
+            Directory.CreateSymbolicLink(link, Path.Combine(root.Path, "target"));
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or PlatformNotSupportedException)
+        {
+            return; // creating symlinks needs a privilege on Windows
+        }
+
+        // Both end up at the same real folder (the temp folder itself may sit behind a symlink on some systems)
+        var resolved = StatsTargetCatalog.ResolveSymlinks(Path.Combine(link, "inner"));
+        Assert.Equal(StatsTargetCatalog.ResolveSymlinks(target), resolved);
+        Assert.DoesNotContain("link", resolved.Substring(StatsTargetCatalog.ResolveSymlinks(root.Path).Length));
+    }
+
+    [Fact]
     public void A_mount_matches_whole_directory_names_only()
     {
         var root = Path.GetFullPath("/");

@@ -90,7 +90,7 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
 
         var nugetPath = testMode
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages")
-            : env.IsWindows ? @"C:\home\.nuget" : Path.Combine(env.Home ?? LinuxHomeDirectory, ".nuget");
+            : env.IsWindows ? @"C:\home\.nuget" : Path.Combine(LinuxHomeDirectory, ".nuget"); // on the shared /home mount, whatever HOME is, as the target is Shared
 
         var tempPath = testMode
             ? env.Temp ?? Path.GetTempPath()
@@ -130,9 +130,9 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
         var diskApplies = onAzure;
         var linuxProduction = !testMode && !env.IsWindows;
         var localDiskApplies = diskApplies && !linuxProduction && directoryExists(localDiskPath);
-        var tempDiskApplies = diskApplies && directoryExists(tempDiskPath) && !(linuxProduction
-            ? SameMount(homeDiskPath, tempDiskPath, mountOf)
-            : SameRoot(localDiskPath, tempDiskPath));
+        var tempDiskApplies = diskApplies && directoryExists(tempDiskPath) && !(env.IsWindows
+            ? SameRoot(localDiskPath, tempDiskPath)
+            : SameMount(homeDiskPath, tempDiskPath, mountOf)); // every path has the root "/" on Linux, so compare mounts (test mode included)
 
         return new List<StatsTarget>
         {
@@ -175,12 +175,38 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
     {
         try
         {
-            return FindMountPoint(path, DriveInfo.GetDrives().Select(d => d.RootDirectory.FullName));
+            return FindMountPoint(ResolveSymlinks(path), DriveInfo.GetDrives().Select(d => d.RootDirectory.FullName));
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>Full path with every symlinked component replaced by its target, so a link into another mount is matched to that mount.</summary>
+    internal static string ResolveSymlinks(string path)
+    {
+        var full = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(full) ?? string.Empty;
+        var current = root;
+        foreach (var segment in full[root.Length..].Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, segment);
+            try
+            {
+                var target = new DirectoryInfo(current).ResolveLinkTarget(returnFinalTarget: true);
+                if (target != null)
+                {
+                    current = target.FullName;
+                }
+            }
+            catch (IOException)
+            {
+                // not a link we can follow (missing, circular): keep the path as it is
+            }
+        }
+
+        return current;
     }
 
     /// <summary>The longest of <paramref name="mounts"/> that contains the path. A mount must match a whole directory name: /home does not contain /home2/tmp.</summary>

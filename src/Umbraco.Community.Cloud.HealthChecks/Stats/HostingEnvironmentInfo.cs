@@ -25,7 +25,6 @@ internal sealed class HostingEnvironmentInfo
 
         // TEMP on Windows, TMPDIR on Linux and macOS (what .NET's Path.GetTempPath uses), never the other OS's variable
         Temp = NullIfBlank(getVariable(IsWindows ? "TEMP" : "TMPDIR"));
-        Home = NullIfBlank(getVariable("HOME"));
     }
 
     /// <summary>True when running on Windows (App Service on Windows); false for Linux and macOS.</summary>
@@ -39,9 +38,6 @@ internal sealed class HostingEnvironmentInfo
 
     /// <summary>The TEMP (or, on Linux, TMPDIR) environment variable, if set.</summary>
     public string? Temp { get; }
-
-    /// <summary>The HOME environment variable, if set (<c>/home</c> on Linux App Service).</summary>
-    public string? Home { get; }
 
     private static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 }
