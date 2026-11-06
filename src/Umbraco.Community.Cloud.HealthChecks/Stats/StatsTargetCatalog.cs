@@ -26,6 +26,7 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
 {
     private const string HomeDirectory = @"C:\home";
     private const string LocalDirectory = @"C:\local";
+    private const string LinuxHomeDirectory = "/home";
 
     private readonly Lazy<IReadOnlyList<StatsTarget>> _targets;
 
@@ -51,11 +52,12 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
         string machineId,
         HostingEnvironmentInfo environment,
         HostingPlatform? platform,
-        Func<string, bool> directoryExists)
+        Func<string, bool> directoryExists,
+        Func<string, string?>? mountOf = null)
     {
         CurrentServer = new ServerKey(machineId, environment.SiteKey);
         Platform = platform ?? (environment.IsAppService ? HostingPlatform.AzureWebApp : HostingPlatform.Other);
-        _targets = new Lazy<IReadOnlyList<StatsTarget>>(() => Build(contentRoot, options, environment, Platform, directoryExists));
+        _targets = new Lazy<IReadOnlyList<StatsTarget>>(() => Build(contentRoot, options, environment, Platform, directoryExists, mountOf ?? FindMountPoint));
     }
 
     /// <inheritdoc />
@@ -76,7 +78,8 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
         CloudHealthChecksOptions options,
         HostingEnvironmentInfo env,
         HostingPlatform platform,
-        Func<string, bool> directoryExists)
+        Func<string, bool> directoryExists,
+        Func<string, string?> mountOf)
     {
         var testMode = options.LocalTestMode;
 
@@ -87,33 +90,66 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
 
         var nugetPath = testMode
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".nuget", "packages")
-            : @"C:\home\.nuget";
+            : env.IsWindows ? @"C:\home\.nuget" : Path.Combine(env.Home ?? LinuxHomeDirectory, ".nuget");
 
         var tempPath = testMode
             ? env.Temp ?? Path.GetTempPath()
-            : env.Temp ?? @"D:\local\Temp";
+            : env.Temp ?? (env.IsWindows ? @"D:\local\Temp" : Path.GetTempPath());
 
-        // The disk targets use the parent of ...\Temp (D:\local) as the path whose quota is read.
-        var tempDiskPath = tempPath.EndsWith(@"\Temp", StringComparison.OrdinalIgnoreCase)
+        // Windows: the disk targets use the parent of ...\Temp (D:\local) as the path whose quota is read.
+        // Linux: the temp folder itself (the container's own, ephemeral, file system).
+        var tempDiskPath = env.IsWindows && tempPath.EndsWith(@"\Temp", StringComparison.OrdinalIgnoreCase)
             ? tempPath[..^5]
-            : tempPath;
+            : TrimTrailingSeparator(tempPath);
 
-        var homeDiskPath = testMode ? contentRoot : HomeDirectory;
-        var localDiskPath = testMode ? Path.Combine(contentRoot, "wwwroot") : LocalDirectory;
+        string homeDiskPath, localDiskPath, homeDisplayName, localDisplayName;
+        if (testMode)
+        {
+            homeDiskPath = contentRoot;
+            localDiskPath = Path.Combine(contentRoot, "wwwroot");
+            homeDisplayName = "Application root (test mode)";
+            localDisplayName = "wwwroot folder (test mode)";
+        }
+        else if (env.IsWindows)
+        {
+            homeDiskPath = HomeDirectory;
+            localDiskPath = LocalDirectory;
+            homeDisplayName = HomeDirectory;
+            localDisplayName = LocalDirectory;
+        }
+        else
+        {
+            // Linux App Service: /home is the persistent, quota-limited, shared mount. There is no separate C:\local, so the
+            // LocalDisk target is not used; the temp folder is reported as the per-instance disk instead.
+            homeDiskPath = LinuxHomeDirectory;
+            localDiskPath = tempDiskPath;
+            homeDisplayName = LinuxHomeDirectory;
+            localDisplayName = tempDiskPath;
+        }
 
         var diskApplies = onAzure;
-        var localDiskApplies = diskApplies && directoryExists(localDiskPath);
-        var tempDiskApplies = diskApplies && directoryExists(tempDiskPath) && !SameRoot(localDiskPath, tempDiskPath);
+        var linuxProduction = !testMode && !env.IsWindows;
+        var localDiskApplies = diskApplies && !linuxProduction && directoryExists(localDiskPath);
+        var tempDiskApplies = diskApplies && directoryExists(tempDiskPath) && !(linuxProduction
+            ? SameMount(homeDiskPath, tempDiskPath, mountOf)
+            : SameRoot(localDiskPath, tempDiskPath));
 
         return new List<StatsTarget>
         {
             new(StatsTargetKeys.UmbracoLogs, "Umbraco logs", logsPath, StatsScope.Shared, StatsKind.Folder, true),
             new(StatsTargetKeys.NuGetCache, testMode ? "NuGet cache (test mode)" : "NuGet cache", nugetPath, StatsScope.Shared, StatsKind.Folder, onAzure),
             new(StatsTargetKeys.LocalTemp, "Local temp", tempPath, StatsScope.PerInstance, StatsKind.Folder, onAzure),
-            new(StatsTargetKeys.HomeDisk, testMode ? "Application root (test mode)" : @"C:\home", homeDiskPath, StatsScope.Shared, StatsKind.Disk, diskApplies),
-            new(StatsTargetKeys.LocalDisk, testMode ? "wwwroot folder (test mode)" : @"C:\local", localDiskPath, StatsScope.PerInstance, StatsKind.Disk, localDiskApplies),
+            new(StatsTargetKeys.HomeDisk, homeDisplayName, homeDiskPath, StatsScope.Shared, StatsKind.Disk, diskApplies),
+            new(StatsTargetKeys.LocalDisk, localDisplayName, localDiskPath, StatsScope.PerInstance, StatsKind.Disk, localDiskApplies),
             new(StatsTargetKeys.TempDisk, testMode ? "System temp folder (test mode)" : tempDiskPath, tempDiskPath, StatsScope.PerInstance, StatsKind.Disk, tempDiskApplies),
         };
+    }
+
+    // Keeps "/" and "C:\" intact, drops the trailing separator Path.GetTempPath() adds ("/tmp/" -> "/tmp")
+    private static string TrimTrailingSeparator(string path)
+    {
+        var root = Path.GetPathRoot(path);
+        return path.Length > (root?.Length ?? 0) ? path.TrimEnd('/', '\\') : path;
     }
 
     private static bool SameRoot(string a, string b) =>
@@ -124,4 +160,31 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
         path.Length >= 2 && path[1] == ':' && char.IsLetter(path[0])
             ? path[..2]
             : Path.GetPathRoot(Path.GetFullPath(path));
+
+    // On Linux every path has the root "/", so compare the mount points the paths live on instead.
+    // When a mount cannot be determined the paths are treated as different, so the disk is reported rather than silently skipped.
+    private static bool SameMount(string a, string b, Func<string, string?> mountOf)
+    {
+        var mountA = mountOf(a);
+        var mountB = mountOf(b);
+        return mountA != null && mountB != null && string.Equals(mountA, mountB, StringComparison.Ordinal);
+    }
+
+    /// <summary>The mount point (longest matching drive root) the path lives on, or null when it cannot be found.</summary>
+    internal static string? FindMountPoint(string path)
+    {
+        try
+        {
+            var full = Path.GetFullPath(path);
+            return DriveInfo.GetDrives()
+                .Select(d => d.RootDirectory.FullName)
+                .Where(root => full.StartsWith(root, StringComparison.Ordinal))
+                .OrderByDescending(root => root.Length)
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

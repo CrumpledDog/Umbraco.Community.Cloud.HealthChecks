@@ -83,23 +83,34 @@ internal sealed class TempFolder : IDisposable
 
 internal static class Build
 {
-    public static HostingEnvironmentInfo Azure(string site = "mysite", string? slot = null, string instance = "inst1") =>
+    // The helpers model a Windows host unless told otherwise, so the Windows path tests behave the same on every OS the tests run on
+    public static HostingEnvironmentInfo Azure(string site = "mysite", string? slot = null, string instance = "inst1", bool isWindows = true) =>
         new(name => name switch
         {
             "WEBSITE_SITE_NAME" => site,
             "WEBSITE_INSTANCE_ID" => instance,
             "WEBSITE_SLOT_NAME" => slot,
             _ => null
-        }, "MACHINE");
+        }, "MACHINE", isWindows);
 
-    public static HostingEnvironmentInfo OffAzure(string machine = "MACHINE") => new(_ => null, machine);
+    public static HostingEnvironmentInfo OffAzure(string machine = "MACHINE", bool isWindows = true) => new(_ => null, machine, isWindows);
+
+    /// <summary>A Linux App Service host: the given variables (HOME, TMPDIR...) plus the App Service ones.</summary>
+    public static HostingEnvironmentInfo LinuxAzure(params (string Name, string Value)[] variables) =>
+        new(name => name switch
+        {
+            "WEBSITE_SITE_NAME" => "mysite",
+            "WEBSITE_INSTANCE_ID" => "inst1",
+            _ => variables.Where(v => v.Name == name).Select(v => v.Value).FirstOrDefault()
+        }, "MACHINE", isWindows: false);
 
     /// <summary>A catalog in LocalTestMode rooted at a temp folder, as an Azure-less dev machine would see it.</summary>
     public static StatsTargetCatalog TestModeCatalog(string contentRoot, string machineId = "m1", string site = "site1", string? tempOverride = null)
     {
         var env = new HostingEnvironmentInfo(
             name => name == "TEMP" ? tempOverride : null,
-            site);
+            site,
+            isWindows: true);
         return new StatsTargetCatalog(contentRoot, new CloudHealthChecksOptions { LocalTestMode = true }, machineId, env, null, Directory.Exists);
     }
 

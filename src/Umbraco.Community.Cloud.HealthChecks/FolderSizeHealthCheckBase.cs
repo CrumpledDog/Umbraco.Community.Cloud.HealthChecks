@@ -586,7 +586,8 @@ namespace Umbraco.Community.Cloud.HealthChecks
                 {
                     RecurseSubdirectories = true,
                     IgnoreInaccessible = true, // Skip files/folders we can't access
-                    ReturnSpecialDirectories = false
+                    ReturnSpecialDirectories = false,
+                    AttributesToSkip = FileAttributes.None // the default skips Hidden, which on Linux means every dot-file and dot-folder
                 };
 
                 // Single pass through all files
