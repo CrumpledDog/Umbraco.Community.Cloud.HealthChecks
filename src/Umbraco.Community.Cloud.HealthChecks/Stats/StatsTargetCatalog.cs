@@ -175,16 +175,32 @@ public sealed class StatsTargetCatalog : IStatsTargetCatalog
     {
         try
         {
-            var full = Path.GetFullPath(path);
-            return DriveInfo.GetDrives()
-                .Select(d => d.RootDirectory.FullName)
-                .Where(root => full.StartsWith(root, StringComparison.Ordinal))
-                .OrderByDescending(root => root.Length)
-                .FirstOrDefault();
+            return FindMountPoint(path, DriveInfo.GetDrives().Select(d => d.RootDirectory.FullName));
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>The longest of <paramref name="mounts"/> that contains the path. A mount must match a whole directory name: /home does not contain /home2/tmp.</summary>
+    internal static string? FindMountPoint(string path, IEnumerable<string> mounts)
+    {
+        var full = Path.GetFullPath(path);
+        return mounts
+            .Where(root => IsUnder(full, root))
+            .OrderByDescending(root => root.Length)
+            .FirstOrDefault();
+    }
+
+    private static bool IsUnder(string full, string root)
+    {
+        if (string.Equals(full, root, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var prefix = root.EndsWith('/') || root.EndsWith('\\') ? root : root + Path.DirectorySeparatorChar;
+        return full.StartsWith(prefix, StringComparison.Ordinal);
     }
 }

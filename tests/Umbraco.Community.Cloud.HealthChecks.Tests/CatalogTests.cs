@@ -179,6 +179,30 @@ public class LinuxCatalogTests
     }
 
     [Fact]
+    public void Temp_comes_from_the_os_specific_variable_not_the_other_ones()
+    {
+        var linux = new HostingEnvironmentInfo(n => n switch { "TEMP" => "/wrong", "TMPDIR" => "/right", _ => null }, "m", isWindows: false);
+        var windows = new HostingEnvironmentInfo(n => n switch { "TEMP" => @"C:\right", "TMPDIR" => @"C:\wrong", _ => null }, "m", isWindows: true);
+
+        Assert.Equal("/right", linux.Temp);
+        Assert.Equal(@"C:\right", windows.Temp);
+        Assert.Null(new HostingEnvironmentInfo(n => n == "TEMP" ? "/wrong" : null, "m", isWindows: false).Temp);
+    }
+
+    [Fact]
+    public void A_mount_matches_whole_directory_names_only()
+    {
+        var root = Path.GetFullPath("/");
+        var home = Path.GetFullPath("/home");
+        var mounts = new[] { root, home };
+
+        Assert.Equal(home, StatsTargetCatalog.FindMountPoint("/home/tmp", mounts));
+        Assert.Equal(home, StatsTargetCatalog.FindMountPoint("/home", mounts));
+        Assert.Equal(root, StatsTargetCatalog.FindMountPoint("/home2/tmp", mounts)); // sibling prefix: not under /home
+        Assert.Equal(root, StatsTargetCatalog.FindMountPoint("/tmp", mounts));
+    }
+
+    [Fact]
     public void Mount_point_is_found_for_a_real_folder()
     {
         using var root = new TempFolder();

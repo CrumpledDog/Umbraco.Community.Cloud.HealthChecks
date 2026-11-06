@@ -23,8 +23,8 @@ internal sealed class HostingEnvironmentInfo
             ? (string.IsNullOrWhiteSpace(slot) ? siteName! : $"{siteName}:{slot}")
             : machineName;
 
-        // TEMP on Windows, TMPDIR on Linux and macOS
-        Temp = NullIfBlank(getVariable("TEMP")) ?? NullIfBlank(getVariable("TMPDIR"));
+        // TEMP on Windows, TMPDIR on Linux and macOS (what .NET's Path.GetTempPath uses), never the other OS's variable
+        Temp = NullIfBlank(getVariable(IsWindows ? "TEMP" : "TMPDIR"));
         Home = NullIfBlank(getVariable("HOME"));
     }
 
