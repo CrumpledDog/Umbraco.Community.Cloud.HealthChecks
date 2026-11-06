@@ -174,7 +174,7 @@ Notes:
 - `MeasureAsync` walks the folder, so call it from background code only, never from a request.
 - Disk targets on the current server are read live by `GetLatestAsync` (instant); for other servers the numbers last stored by that server's job are returned.
 - `LocalTestMode` makes the Azure targets resolve to local paths so the API can be exercised off Azure.
-- Results from 1.3.x are still read, and the 1.3.x cache keys are still written for the shared logs and NuGet targets, so a mixed-version fleet keeps working during a rollout.
+- Results from 1.3.x are still read, and the 1.3.x cache keys are still written for the shared logs and NuGet targets, so a mixed-version fleet keeps working during a rollout. The 1.3.x keys are not site-specific, so if several sites share one result store, 1.3.x instances can't tell them apart and show whichever site wrote last. Newer instances are unaffected.
 
 ## Requirements
 
